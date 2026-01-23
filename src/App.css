@@ -1824,31 +1824,36 @@ body::before {
 }
 
 .password-input-group input {
-  padding-right: 3rem;
+  padding-right: 6rem;
 }
 
 .password-toggle-btn,
 .generate-password-btn {
   position: absolute;
-  right: var(--space-sm);
+  right: 0.5rem;
   top: 50%;
   transform: translateY(-50%);
-  background: transparent;
-  border: none;
-  color: var(--text-tertiary);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text-secondary);
   cursor: pointer;
-  padding: var(--space-xs);
-  border-radius: var(--radius-sm);
+  padding: 0.4rem 0.75rem;
+  border-radius: var(--radius-md);
   transition: all var(--duration-fast) var(--ease-smooth);
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 0.75rem;
+  font-weight: 600;
+  height: calc(100% - 1rem);
 }
 
 .password-toggle-btn:hover,
 .generate-password-btn:hover {
   color: var(--accent);
+  border-color: var(--accent);
   background: var(--accent-muted);
+  box-shadow: 0 0 10px var(--accent-glow);
 }
 
 .modal-actions {

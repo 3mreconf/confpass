@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { PasswordStrengthResult } from '../types';
 import { clearClipboard } from '../utils';
+import './PasswordGeneratorModal.css';
 
 interface PasswordGeneratorModalProps {
   onClose: () => void;
@@ -78,7 +79,7 @@ export default function PasswordGeneratorModal({ onClose, showToast }: PasswordG
 
   return (
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+      <div className="modal-content generator-modal-content" onClick={(e) => e.stopPropagation()}>
         <h2>Şifre Oluşturucu</h2>
         <div className="form-group">
           <label className="length-label">

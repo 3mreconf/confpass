@@ -1,8 +1,9 @@
 import { useMemo } from 'react';
+import { openUrl } from '@tauri-apps/plugin-opener';
 import {
   Shield, Key, CreditCard, FileText, MapPin, StickyNote, KeyRound,
   AlertTriangle, CheckCircle, TrendingUp, Download, Settings,
-  Star, ArrowRight, Lock, Fingerprint, Globe
+  Star, ArrowRight, Lock, Fingerprint, Globe, RefreshCw
 } from 'lucide-react';
 import type { PasswordEntry } from '../types';
 
@@ -10,6 +11,13 @@ interface PasswordSecurityData {
   atRisk: PasswordEntry[];
   weak: PasswordEntry[];
   total: number;
+}
+
+interface UpdateInfo {
+  available: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  url: string;
 }
 
 interface DashboardProps {
@@ -20,6 +28,7 @@ interface DashboardProps {
   onNavigateToPasswordCheck: () => void;
   onNavigateToSettings: () => void;
   showToast: (message: string, type?: 'success' | 'error' | 'info') => void;
+  updateInfo?: UpdateInfo;
 }
 
 export default function Dashboard({
@@ -29,6 +38,7 @@ export default function Dashboard({
   onNavigateToCategory,
   onNavigateToPasswordCheck,
   onNavigateToSettings,
+  updateInfo,
 }: DashboardProps) {
   // Calculate statistics
   const stats = useMemo(() => {
@@ -105,12 +115,59 @@ export default function Dashboard({
     }
   };
 
+  const handleUpdate = async () => {
+    if (updateInfo?.url) {
+      try {
+        await openUrl(updateInfo.url);
+      } catch (error) {
+        console.error('Failed to open update URL:', error);
+      }
+    }
+  };
+
   return (
     <div className="dashboard">
       <div className="dashboard-header">
         <h1>Hoş Geldiniz</h1>
         <p className="dashboard-subtitle">Şifre kasanızın özeti</p>
       </div>
+
+      {/* Update Alert */}
+      {updateInfo?.available && (
+        <div className="dashboard-alert update-alert" onClick={handleUpdate} style={{ 
+          background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(37, 99, 235, 0.05))',
+          borderColor: 'rgba(59, 130, 246, 0.3)',
+          cursor: 'pointer',
+          marginBottom: '1.5rem'
+        }}>
+          <div className="alert-icon" style={{ 
+            background: 'rgba(59, 130, 246, 0.2)',
+            color: '#3b82f6'
+          }}>
+            <RefreshCw size={24} className="spin-slow" />
+          </div>
+          <div className="alert-content">
+            <h3 style={{ color: '#60a5fa' }}>Güncelleme Mevcut</h3>
+            <p style={{ color: 'var(--text-secondary)' }}>
+              Yeni sürüm ({updateInfo.latestVersion}) indirilebilir durumda. Güncellemek için tıklayın.
+            </p>
+          </div>
+          <div style={{
+            padding: '0.5rem 1rem',
+            background: '#3b82f6',
+            color: 'white',
+            borderRadius: '8px',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+            display: 'flex',
+            alignItems: 'center',
+            gap: '0.5rem'
+          }}>
+            <Download size={16} />
+            İndir
+          </div>
+        </div>
+      )}
 
       {/* Main Stats Row */}
       <div className="dashboard-stats-row">

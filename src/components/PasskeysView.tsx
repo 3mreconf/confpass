@@ -1,11 +1,10 @@
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Copy, Trash2, KeyRound, Search, RotateCcw, Trash, Globe, User, Mail } from 'lucide-react';
+import { Copy, Trash2, KeyRound, Search, RotateCcw, Trash, Globe, User, Mail, HelpCircle, X, Shield, Chrome } from 'lucide-react';
 import type { PasswordEntry, PasskeyData } from '../types';
 
 interface PasskeysViewProps {
   entries: PasswordEntry[];
-  onAddNew: () => void;
   showToast: (message: string, type: 'success' | 'error' | 'info') => void;
   loadEntries: () => Promise<void>;
   setConfirmDialog: (dialog: { message: string; onConfirm: () => void } | null) => void;
@@ -20,7 +19,6 @@ type ViewMode = 'active' | 'trash';
 
 export default function PasskeysView({
   entries,
-  onAddNew,
   showToast,
   loadEntries,
   setConfirmDialog
@@ -28,6 +26,7 @@ export default function PasskeysView({
   const [searchQuery, setSearchQuery] = useState('');
   const [viewMode, setViewMode] = useState<ViewMode>('active');
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [showHelp, setShowHelp] = useState(false);
 
   // Parse passkey entries
   const parsePasskeys = useCallback((): { active: PasskeyItem[]; trashed: PasskeyItem[] } => {
@@ -86,7 +85,7 @@ export default function PasskeysView({
   // Soft delete - move to trash
   const handleSoftDelete = (entry: PasswordEntry) => {
     setConfirmDialog({
-      message: `"${entry.title}" geçiş anahtarını çöp kutusuna taşımak istediğinizden emin misiniz?\n\nÇöp kutusundan geri yükleyebilirsiniz.`,
+      message: `"${entry.title}" geçiş anahtarını çöp kutusuna taşımak istediğinizden emin misiniz?\n\nÇöp kutusundan geri yükleyebilirsiniz.`, 
       onConfirm: async () => {
         try {
           await invoke('soft_delete_passkey', { id: entry.id });
@@ -114,7 +113,7 @@ export default function PasskeysView({
   // Permanent delete
   const handlePermanentDelete = (entry: PasswordEntry) => {
     setConfirmDialog({
-      message: `"${entry.title}" geçiş anahtarını kalıcı olarak silmek istediğinizden emin misiniz?\n\n⚠️ Bu işlem geri alınamaz!`,
+      message: `"${entry.title}" geçiş anahtarını kalıcı olarak silmek istediğinizden emin misiniz?\n\n⚠️ Bu işlem geri alınamaz!`, 
       onConfirm: async () => {
         try {
           await invoke('permanently_delete_passkey', { id: entry.id });
@@ -136,7 +135,7 @@ export default function PasskeysView({
     }
 
     setConfirmDialog({
-      message: `Çöp kutusundaki ${trashedPasskeys.length} öğeyi kalıcı olarak silmek istediğinizden emin misiniz?\n\n⚠️ Bu işlem geri alınamaz!`,
+      message: `Çöp kutusundaki ${trashedPasskeys.length} öğeyi kalıcı olarak silmek istediğinizden emin misiniz?\n\n⚠️ Bu işlem geri alınamaz!`, 
       onConfirm: async () => {
         try {
           for (const item of trashedPasskeys) {
@@ -189,11 +188,11 @@ export default function PasskeysView({
         </div>
         <div className="passkeys-actions">
           <button
-            className="passkeys-add-btn"
-            onClick={onAddNew}
+            className="passkeys-help-btn"
+            onClick={() => setShowHelp(true)}
+            title="Nasıl Eklenir?"
           >
-            <Plus size={18} />
-            Ekle
+            <HelpCircle size={20} />
           </button>
         </div>
       </div>
@@ -259,9 +258,9 @@ export default function PasskeysView({
                     : 'Henüz geçiş anahtarı eklenmemiş'}
                 </p>
                 {!searchQuery && (
-                  <button className="passkeys-add-btn" onClick={onAddNew}>
-                    <Plus size={18} />
-                    İlk Geçiş Anahtarını Ekle
+                  <button className="passkeys-help-link" onClick={() => setShowHelp(true)}>
+                    <HelpCircle size={16} />
+                    Nasıl Eklenir?
                   </button>
                 )}
               </>
@@ -338,7 +337,206 @@ export default function PasskeysView({
         )}
       </div>
 
+      {showHelp && (
+        <div className="modal-overlay" onClick={() => setShowHelp(false)}>
+          <div className="modal-content help-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-wrapper">
+                <KeyRound size={24} style={{ color: 'var(--accent)' }} />
+                <h2>Geçiş Anahtarı Nasıl Eklenir?</h2>
+              </div>
+              <button className="modal-close-btn" onClick={() => setShowHelp(false)}>
+                <X size={20} />
+              </button>
+            </div>
+            
+            <div className="help-content">
+              <div className="help-step">
+                <div className="step-icon">
+                  <Chrome size={24} />
+                </div>
+                <div className="step-info">
+                  <h3>1. Eklenti Kurulumu</h3>
+                  <p>ConfPass tarayıcı uzantısının tarayıcınızda kurulu ve aktif olduğundan emin olun.</p>
+                </div>
+              </div>
+
+              <div className="step-arrow">↓</div>
+
+              <div className="help-step">
+                <div className="step-icon">
+                  <Globe size={24} />
+                </div>
+                <div className="step-info">
+                  <h3>2. Web Sitesine Giriş</h3>
+                  <p>Geçiş anahtarı eklemek istediğiniz web sitesine (örn. Google, GitHub) tarayıcınızdan giriş yapın.</p>
+                </div>
+              </div>
+
+              <div className="step-arrow">↓</div>
+
+              <div className="help-step">
+                <div className="step-icon">
+                  <Shield size={24} />
+                </div>
+                <div className="step-info">
+                  <h3>3. Anahtar Oluşturma</h3>
+                  <p>Sitenin güvenlik ayarlarına gidin. "Geçiş Anahtarı" (Passkey) veya "Güvenlik Anahtarı" ekle seçeneğini seçin.</p>
+                </div>
+              </div>
+
+              <div className="step-arrow">↓</div>
+
+              <div className="help-step highlight">
+                <div className="step-icon">
+                  <KeyRound size={24} />
+                </div>
+                <div className="step-info">
+                  <h3>4. Otomatik Algılama</h3>
+                  <p>Siz işlemi başlattığınızda, ConfPass uzantısı otomatik olarak devreye girecek ve anahtarı kasanıza kaydedecektir.</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn-primary" onClick={() => setShowHelp(false)}>
+                Anlaşıldı
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       <style>{`
+        .passkeys-help-btn {
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          width: 40px;
+          height: 40px;
+          border-radius: 50%;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          color: var(--text-secondary);
+          cursor: pointer;
+          transition: all 0.3s ease;
+        }
+
+        .passkeys-help-btn:hover {
+          background: var(--bg-elevated);
+          color: var(--accent);
+          border-color: var(--accent);
+          transform: translateY(-2px);
+          box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .passkeys-help-link {
+          margin-top: 1rem;
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.75rem 1.5rem;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          color: var(--accent);
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.3s ease;
+        }
+
+        .passkeys-help-link:hover {
+          background: var(--bg-elevated);
+          border-color: var(--accent);
+          transform: translateY(-2px);
+        }
+
+        /* Help Modal Styles */
+        .help-modal {
+          max-width: 500px;
+        }
+
+        .modal-title-wrapper {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+        }
+
+        .help-content {
+          display: flex;
+          flex-direction: column;
+          gap: 0.5rem;
+          margin-bottom: 2rem;
+        }
+
+        .help-step {
+          display: flex;
+          align-items: flex-start;
+          gap: 1rem;
+          padding: 1rem;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          transition: all 0.3s ease;
+        }
+
+        .help-step:hover {
+          background: var(--bg-elevated);
+          border-color: var(--border-hover);
+        }
+
+        .help-step.highlight {
+          background: linear-gradient(145deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%);
+          border-color: rgba(245, 158, 11, 0.3);
+        }
+
+        .step-icon {
+          width: 40px;
+          height: 40px;
+          border-radius: 10px;
+          background: var(--bg-secondary);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          color: var(--text-secondary);
+          flex-shrink: 0;
+          border: 1px solid var(--border);
+        }
+
+        .highlight .step-icon {
+          background: var(--accent-muted);
+          color: var(--accent);
+          border-color: rgba(245, 158, 11, 0.3);
+        }
+
+        .step-info h3 {
+          font-family: 'Sora', sans-serif;
+          font-size: 1rem;
+          font-weight: 600;
+          color: var(--text-primary);
+          margin: 0 0 0.25rem 0;
+        }
+
+        .step-info p {
+          font-size: 0.85rem;
+          color: var(--text-secondary);
+          margin: 0;
+          line-height: 1.5;
+        }
+
+        .step-arrow {
+          text-align: center;
+          color: var(--text-tertiary);
+          font-weight: bold;
+          font-size: 1.2rem;
+          margin: -0.25rem 0;
+        }
+
+        .modal-footer {
+          display: flex;
+          justify-content: center;
+        }
+
         .passkeys-view {
           display: flex;
           flex-direction: column;
@@ -385,28 +583,6 @@ export default function PasskeysView({
           display: flex;
           align-items: center;
           gap: 1rem;
-        }
-
-        .passkeys-add-btn {
-          display: flex;
-          align-items: center;
-          gap: 0.5rem;
-          padding: 0.75rem 1.5rem;
-          background: linear-gradient(135deg, #f59e0b, #d97706);
-          border: none;
-          border-radius: 12px;
-          color: var(--bg-primary);
-          font-family: 'Sora', sans-serif;
-          font-size: 0.9rem;
-          font-weight: 600;
-          cursor: pointer;
-          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-          box-shadow: 0 4px 15px rgba(245, 158, 11, 0.3);
-        }
-
-        .passkeys-add-btn:hover {
-          transform: translateY(-2px);
-          box-shadow: 0 6px 25px rgba(245, 158, 11, 0.4);
         }
 
         .passkeys-tabs {

@@ -224,6 +224,26 @@ export default function AddAuthenticatorModal({
           gap: 12px;
         }
 
+        .modal-close {
+          background: transparent;
+          border: 1px solid transparent;
+          color: var(--text-tertiary);
+          cursor: pointer;
+          padding: 8px;
+          border-radius: 10px;
+          transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .modal-close:hover {
+          background: var(--danger-muted);
+          border-color: rgba(239, 68, 68, 0.3);
+          color: var(--danger);
+          transform: rotate(90deg);
+        }
+
         .modal-description {
           color: var(--text-secondary);
           font-size: 0.9rem;

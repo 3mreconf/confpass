@@ -19,6 +19,7 @@ import SecurityCheckPage from './components/SecurityCheckPage';
 import { usePasswordSecurity } from './hooks/usePasswordSecurity';
 import { useDebounce } from './hooks/useDebounce';
 import { useBiometric } from './hooks/useBiometric';
+import { useUpdateCheck } from './hooks/useUpdateCheck';
 import './App.css';
 
 function App() {
@@ -57,6 +58,28 @@ function App() {
 
   const { passwordSecurity } = usePasswordSecurity(entries, vaultLocked);
   const { available: biometricAvailable, authenticate: biometricAuthenticate, checkAvailability } = useBiometric();
+  const { updateInfo } = useUpdateCheck();
+
+  useEffect(() => {
+    if (updateInfo.available) {
+      const sendNotification = () => {
+        new Notification('Güncelleme Mevcut', {
+          body: `Yeni sürüm ${updateInfo.latestVersion} indirilebilir.`,
+          icon: '/pwa-192x192.png'
+        });
+      };
+
+      if (Notification.permission === 'granted') {
+        sendNotification();
+      } else if (Notification.permission !== 'denied') {
+        Notification.requestPermission().then(permission => {
+          if (permission === 'granted') {
+            sendNotification();
+          }
+        });
+      }
+    }
+  }, [updateInfo.available, updateInfo.latestVersion]);
 
   useEffect(() => {
     if (vaultLocked) {
@@ -757,7 +780,6 @@ function App() {
         ) : currentPage === 'passkeys' ? (
           <PasskeysView
             entries={entries}
-            onAddNew={() => setShowAddPasskey(true)}
             showToast={showToast}
             loadEntries={loadEntries}
             setConfirmDialog={setConfirmDialog}
@@ -773,6 +795,7 @@ function App() {
             onNavigateToPasswordCheck={() => setCurrentPage('password-check')}
             onNavigateToSettings={() => setCurrentPage('settings')}
             showToast={showToast}
+            updateInfo={updateInfo}
           />
         ) : (
         <>
@@ -830,6 +853,7 @@ function App() {
                     }, 100);
                   }}
                   className="add-button-primary"
+                  style={{ display: selectedCategory === 'passkeys' ? 'none' : 'flex' }}
                 >
                   <Plus size={18} />
                   {CATEGORY_NAMES[selectedCategory]} Ekle
@@ -1018,7 +1042,7 @@ function App() {
 
       {showAddPasskey && (
         <div className="modal-overlay" onClick={() => setShowAddPasskey(false)}>
-          <div className="modal" onClick={(e) => e.stopPropagation()}>
+          <div className="modal-content modal-card-form" onClick={(e) => e.stopPropagation()}>
             <AddPasskeyModal
               onClose={() => {
                 setShowAddPasskey(false);
@@ -1368,7 +1392,7 @@ function AddAccountModal({ onClose, showToast }: { onClose: () => void; showToas
             onChange={(e) => setPassword(e.target.value)}
             placeholder="şifre"
           />
-          <button onClick={generatePassword} className="generate-btn">
+          <button onClick={generatePassword} className="generate-password-btn">
             Oluştur
           </button>
         </div>
@@ -1403,19 +1427,9 @@ function AddBankCardModal({ onClose, showToast }: { onClose: () => void; showToa
   const [cvv, setCvv] = useState('');
   const [cardholderName, setCardholderName] = useState('');
   const [cardType, setCardType] = useState('Visa');
-  const [cardColor, setCardColor] = useState('#1a1a1f');
   const [showCardNumber, setShowCardNumber] = useState(false);
   const [showCvv, setShowCvv] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
-
-  const cardColors = [
-    { value: '#1a1a1f', label: 'Koyu Gri' },
-    { value: '#ff6b35', label: 'Turuncu' },
-    { value: '#4a90e2', label: 'Mavi' },
-    { value: '#f5a623', label: 'Altın' },
-    { value: '#50c878', label: 'Yeşil' },
-    { value: '#e8e8e8', label: 'Açık Gri' },
-  ];
 
   const formatCardNumber = (value: string) => {
     const cleaned = value.replace(/\s/g, '').replace(/\D/g, '');
@@ -1455,7 +1469,6 @@ function AddBankCardModal({ onClose, showToast }: { onClose: () => void; showToa
       cvv,
       cardholderName,
       cardType,
-      cardColor,
     };
 
     setIsSubmitting(true);
@@ -1520,7 +1533,7 @@ function AddBankCardModal({ onClose, showToast }: { onClose: () => void; showToa
         perspective: '1200px',
       }}>
         <div className="bank-card-front" style={{ 
-          background: `linear-gradient(135deg, ${cardColor} 0%, ${cardColor}dd 100%)`,
+          background: `linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%)`,
           borderRadius: '16px',
           padding: '2rem',
           position: 'relative',
@@ -1838,36 +1851,6 @@ function AddBankCardModal({ onClose, showToast }: { onClose: () => void; showToa
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="color-swatches" style={{
-        display: 'flex',
-        gap: '0.75rem',
-        marginBottom: '0.5rem',
-        justifyContent: 'center',
-      }}>
-        {cardColors.map((color) => (
-          <button
-            key={color.value}
-            type="button"
-            onClick={() => setCardColor(color.value)}
-            className="color-swatch"
-            style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '50%',
-              background: color.value,
-              border: cardColor === color.value ? '3px solid var(--accent)' : '2px solid var(--border)',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              boxShadow: cardColor === color.value 
-                ? '0 4px 12px rgba(0, 217, 255, 0.4), 0 0 0 2px rgba(0, 217, 255, 0.2)' 
-                : '0 2px 8px rgba(0, 0, 0, 0.2)',
-              transform: cardColor === color.value ? 'scale(1.15)' : 'scale(1)',
-            }}
-            title={color.label}
-          />
-        ))}
       </div>
 
       <div className="form-group" style={{ marginTop: '0.5rem' }}>
@@ -2496,7 +2479,7 @@ function EditAccountModal({ entry, onClose, showToast }: { entry: PasswordEntry;
             onChange={(e) => setPassword(e.target.value)}
             placeholder="şifre"
           />
-          <button onClick={generatePassword} className="generate-btn">
+          <button onClick={generatePassword} className="generate-password-btn">
             Oluştur
           </button>
         </div>
@@ -2540,18 +2523,8 @@ function EditBankCardModal({ entry, onClose, showToast }: { entry: PasswordEntry
   const [cvv, setCvv] = useState(entry.password || '');
   const [cardholderName, setCardholderName] = useState(cardData.cardholderName || '');
   const [cardType, setCardType] = useState(cardData.cardType || 'Visa');
-  const [cardColor, setCardColor] = useState(cardData.cardColor || '#1a1a1f');
   const [showCardNumber, setShowCardNumber] = useState(false);
   const [showCvv, setShowCvv] = useState(false);
-
-  const cardColors = [
-    { value: '#1a1a1f', label: 'Koyu Gri' },
-    { value: '#ff6b35', label: 'Turuncu' },
-    { value: '#4a90e2', label: 'Mavi' },
-    { value: '#f5a623', label: 'Altın' },
-    { value: '#50c878', label: 'Yeşil' },
-    { value: '#e8e8e8', label: 'Açık Gri' },
-  ];
 
   const formatCardNumber = (value: string) => {
     const cleaned = value.replace(/\s/g, '').replace(/\D/g, '');
@@ -2591,7 +2564,6 @@ function EditBankCardModal({ entry, onClose, showToast }: { entry: PasswordEntry
       cvv,
       cardholderName,
       cardType,
-      cardColor,
     };
 
     try {
@@ -2651,7 +2623,7 @@ function EditBankCardModal({ entry, onClose, showToast }: { entry: PasswordEntry
         perspective: '1200px',
       }}>
         <div className="bank-card-front" style={{ 
-          background: `linear-gradient(135deg, ${cardColor} 0%, ${cardColor}dd 100%)`,
+          background: `linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%)`,
           borderRadius: '16px',
           padding: '2rem',
           position: 'relative',
@@ -2969,36 +2941,6 @@ function EditBankCardModal({ entry, onClose, showToast }: { entry: PasswordEntry
             </div>
           </div>
         </div>
-      </div>
-
-      <div className="color-swatches" style={{
-        display: 'flex',
-        gap: '0.75rem',
-        marginBottom: '0.5rem',
-        justifyContent: 'center',
-      }}>
-        {cardColors.map((color) => (
-          <button
-            key={color.value}
-            type="button"
-            onClick={() => setCardColor(color.value)}
-            className="color-swatch"
-            style={{
-              width: '36px',
-              height: '36px',
-              borderRadius: '50%',
-              background: color.value,
-              border: cardColor === color.value ? '3px solid var(--accent)' : '2px solid var(--border)',
-              cursor: 'pointer',
-              transition: 'all 0.2s',
-              boxShadow: cardColor === color.value 
-                ? '0 4px 12px rgba(0, 217, 255, 0.4), 0 0 0 2px rgba(0, 217, 255, 0.2)' 
-                : '0 2px 8px rgba(0, 0, 0, 0.2)',
-              transform: cardColor === color.value ? 'scale(1.15)' : 'scale(1)',
-            }}
-            title={color.label}
-          />
-        ))}
       </div>
 
       <div className="form-group" style={{ marginTop: '0.5rem' }}>
