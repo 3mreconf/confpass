@@ -1,0 +1,3576 @@
+import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
+import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
+import { listen } from '@tauri-apps/api/event';
+import { Lock, Unlock, Plus, Search, Key, Shield, Settings as SettingsIcon, Home, CheckCircle, XCircle, Info, AlertCircle, ChevronDown, Minus, Maximize2, X, Grid3x3, Star, Download, HelpCircle, List, LayoutGrid, AlertTriangle, Eye, EyeOff, Copy, Clock, KeyRound, Fingerprint } from 'lucide-react';
+import { CATEGORY_NAMES, CATEGORY_OPTIONS, DEBOUNCE_DELAY, AUTO_LOCK_TIMEOUT, TOAST_DURATION } from './constants';
+import { clearClipboard, validateUrl } from './utils';
+import type { PasswordEntry, ToastMessage, ConfirmDialog, BankCardData, DocumentData, AddressData, PasskeyData } from './types';
+import EntryCard from './components/EntryCard';
+import Settings from './components/Settings';
+import PasswordGeneratorModal from './components/PasswordGeneratorModal';
+import TotpModal from './components/TotpModal';
+import ActivityLogModal from './components/ActivityLogModal';
+import AuthenticatorView from './components/AuthenticatorView';
+import AddAuthenticatorModal from './components/AddAuthenticatorModal';
+import PasskeysView from './components/PasskeysView';
+import Dashboard from './components/Dashboard';
+import SecurityCheckPage from './components/SecurityCheckPage';
+import { usePasswordSecurity } from './hooks/usePasswordSecurity';
+import { useDebounce } from './hooks/useDebounce';
+import { useBiometric } from './hooks/useBiometric';
+import './App.css';
+
+function App() {
+  const [vaultLocked, setVaultLocked] = useState(true);
+  const [masterPassword, setMasterPassword] = useState('');
+  const [entries, setEntries] = useState<PasswordEntry[]>([]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const debouncedSearchQuery = useDebounce(searchQuery, DEBOUNCE_DELAY);
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showPasswordGenerator, setShowPasswordGenerator] = useState(false);
+  const [selectedCategory, setSelectedCategory] = useState('all');
+  const [showPasswords, setShowPasswords] = useState<Record<string, boolean>>({});
+  const [editingEntry, setEditingEntry] = useState<PasswordEntry | null>(null);
+  const [totpModal, setTotpModal] = useState<{ secret: string; issuer?: string; account?: string } | null>(null);
+  const [showActivityLog, setShowActivityLog] = useState(false);
+  const autoLockTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [toast, setToast] = useState<ToastMessage | null>(null);
+  const [unlockError, setUnlockError] = useState(false);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmDialog | null>(null);
+  const [displayTitle, setDisplayTitle] = useState('');
+  const [displaySubtitle, setDisplaySubtitle] = useState('');
+  const [showAddDropdown, setShowAddDropdown] = useState(false);
+  const [viewMode, setViewMode] = useState<'all' | 'favorites' | 'entries'>('all');
+  const [favorites, setFavorites] = useState<Set<string>>(new Set());
+  const [currentPage, setCurrentPage] = useState<'home' | 'settings' | 'password-check' | 'authenticator' | 'passkeys'>('home');
+  const [showAddAuthenticator, setShowAddAuthenticator] = useState(false);
+  const [showAddPasskey, setShowAddPasskey] = useState(false);
+  const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
+  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+  const [detectedPasskey, setDetectedPasskey] = useState<{ rpId: string; userName: string; userDisplayName: string } | null>(null);
+
+  const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
+    setToast({ message, type });
+    setTimeout(() => setToast(null), TOAST_DURATION);
+  }, []);
+
+  const { passwordSecurity } = usePasswordSecurity(entries, vaultLocked);
+  const { available: biometricAvailable, authenticate: biometricAuthenticate, checkAvailability } = useBiometric();
+
+  useEffect(() => {
+    if (vaultLocked) {
+      checkAvailability();
+    }
+  }, [vaultLocked, checkAvailability]);
+
+  useEffect(() => {
+    const setupPasskeyListeners = async () => {
+      console.log('[Passkey Listener] Setting up passkey listeners...');
+      try {
+        // Listen for passkey detection events from backend (JSON object format)
+        interface PasskeyEvent {
+          rpId: string;
+          rpName?: string;
+          userName: string;
+          userDisplayName: string;
+          credentialId?: string;
+          url?: string;
+          timestamp?: number;
+        }
+
+        const unlistenDetected = await listen<PasskeyEvent>('passkey-detected', (event) => {
+          console.log('[Passkey Listener] passkey-detected event received:', event.payload);
+
+          const payload = event.payload;
+          if (payload && payload.rpId && payload.userName) {
+            console.log('[Passkey Listener] Parsed passkey:', payload);
+            setDetectedPasskey({
+              rpId: payload.rpId,
+              userName: payload.userName,
+              userDisplayName: payload.userDisplayName || payload.userName
+            });
+          } else {
+            console.error('[Passkey Listener] Invalid payload format:', event.payload);
+          }
+        });
+
+        // Listen for passkey-saved events (from browser extension via HTTP API)
+        const unlistenSaved = await listen<PasskeyEvent>('passkey-saved', async (event) => {
+          console.log('[Passkey Listener] passkey-saved event received:', event.payload);
+
+          const payload = event.payload;
+          if (payload && payload.rpId) {
+            // Show toast notification
+            const serviceName = payload.rpName || payload.rpId;
+            showToast(`Geçiş anahtarı kaydedildi: ${serviceName}`, 'success');
+
+            // Reload entries to show the new passkey in UI
+            try {
+              const loadedEntries = await invoke<PasswordEntry[]>('get_password_entries');
+              setEntries(loadedEntries);
+            } catch (err) {
+              console.error('[Passkey Listener] Failed to reload entries:', err);
+            }
+          }
+        });
+
+        console.log('[Passkey Listener] Listeners set up successfully');
+        return () => {
+          unlistenDetected();
+          unlistenSaved();
+        };
+      } catch (error) {
+        console.error('[Passkey Listener] Failed to set up listeners:', error);
+      }
+    };
+
+    setupPasskeyListeners().catch(console.error);
+  }, [showToast]);
+
+  const handleBiometricUnlock = useCallback(async () => {
+    try {
+      const authenticated = await biometricAuthenticate('Kasa kilidini açmak için biyometrik kimlik doğrulama');
+      if (authenticated) {
+        showToast('Biyometrik kimlik doğrulama başarılı. Lütfen master şifrenizi girin.', 'info');
+      } else {
+        showToast('Biyometrik kimlik doğrulama başarısız', 'error');
+      }
+    } catch (error) {
+      console.error('Biometric unlock error:', error);
+      showToast('Biyometrik kimlik doğrulama hatası', 'error');
+    }
+  }, [biometricAuthenticate, showToast]);
+
+  const loadEntries = useCallback(async () => {
+    try {
+      const loadedEntries = await invoke<PasswordEntry[]>('get_password_entries');
+      setEntries(loadedEntries);
+      
+      await invoke('log_activity', {
+        action: 'view',
+        entry_id: null,
+        details: 'Tüm kayıtlar görüntülendi'
+      });
+    } catch (error) {
+      console.error('Error loading entries:', error);
+      const errorStr = String(error || '');
+      const errorMessage = errorStr.includes('Kasa kilitli') 
+        ? 'Kasa kilitli' 
+        : 'Kayıtlar yüklenemedi';
+      showToast(errorMessage, 'error');
+    }
+  }, [showToast]);
+
+  const checkVaultStatus = useCallback(async () => {
+    try {
+      const locked = await invoke<boolean>('is_vault_locked');
+      setVaultLocked(locked);
+      if (!locked) {
+        await loadEntries();
+      }
+    } catch (error) {
+      console.error('Error checking vault status:', error);
+      showToast('Kasa durumu kontrol edilemedi', 'error');
+    }
+  }, [loadEntries, showToast]);
+
+  const handleLock = useCallback(async () => {
+    try {
+      await invoke('lock_vault');
+      setVaultLocked(true);
+      setEntries([]);
+      setMasterPassword('');
+      showToast('Kasa kilitlendi', 'info');
+    } catch (error) {
+      console.error('Error locking vault:', error);
+      showToast('Kasa kilitlenemedi', 'error');
+    }
+  }, [showToast]);
+
+  const handleUnlock = useCallback(async () => {
+    if (!masterPassword.trim()) {
+      showToast('Lütfen ana şifrenizi girin', 'error');
+      setUnlockError(true);
+      return;
+    }
+    
+    setUnlockError(false);
+    try {
+      const success = await invoke<boolean>('unlock_vault', { masterPassword });
+      if (success) {
+        setVaultLocked(false);
+        setMasterPassword('');
+        setUnlockError(false);
+        await loadEntries();
+        showToast('Kasa başarıyla açıldı', 'success');
+      }
+    } catch (error) {
+      let errorMessage = 'Kasa açılamadı';
+      const errorStr = String(error || '');
+      
+      if (errorStr.includes('Yanlış ana şifre')) {
+        errorMessage = 'Yanlış ana şifre';
+        setUnlockError(true);
+      } else if (errorStr.includes('Vault dosyası bulunamadı')) {
+        errorMessage = 'Vault dosyası bulunamadı. Lütfen ilk kurulumu yapın.';
+        setUnlockError(true);
+      } else if (errorStr.includes('Vault yüklenemedi')) {
+        errorMessage = 'Vault yüklenemedi. Dosya bozuk olabilir.';
+        setUnlockError(true);
+      } else if (errorStr.includes('Decrypt hatası')) {
+        errorMessage = 'Yanlış ana şifre veya bozuk veri';
+        setUnlockError(true);
+      } else if (errorStr.includes('Çok fazla deneme')) {
+        errorMessage = 'Çok fazla deneme. Lütfen bekleyin.';
+        setUnlockError(true);
+      } else if (errorStr) {
+        errorMessage = errorStr;
+        setUnlockError(true);
+      }
+      
+      showToast(errorMessage, 'error');
+      setUnlockError(true);
+    }
+  }, [masterPassword, loadEntries, showToast]);
+
+  useEffect(() => {
+    checkVaultStatus();
+    const savedFavorites = localStorage.getItem('confpass_favorites');
+    if (savedFavorites) {
+      try {
+        setFavorites(new Set(JSON.parse(savedFavorites)));
+      } catch (e) {
+        console.error('Failed to load favorites:', e);
+      }
+    }
+  }, [checkVaultStatus]);
+
+  useEffect(() => {
+    localStorage.setItem('confpass_favorites', JSON.stringify(Array.from(favorites)));
+  }, [favorites]);
+
+
+  useEffect(() => {
+    if (vaultLocked) {
+      const title = 'ConfPass';
+      const subtitle = 'Güvenli Şifre Yöneticisi';
+      
+      setDisplayTitle('');
+      setDisplaySubtitle('');
+      
+      let titleIndex = 0;
+      const titleInterval = setInterval(() => {
+        if (titleIndex < title.length) {
+          setDisplayTitle(title.substring(0, titleIndex + 1));
+          titleIndex++;
+        } else {
+          clearInterval(titleInterval);
+          
+          let subtitleIndex = 0;
+          const subtitleInterval = setInterval(() => {
+            if (subtitleIndex < subtitle.length) {
+              setDisplaySubtitle(subtitle.substring(0, subtitleIndex + 1));
+              subtitleIndex++;
+            } else {
+              clearInterval(subtitleInterval);
+            }
+          }, 50);
+        }
+      }, 100);
+      
+      return () => {
+        clearInterval(titleInterval);
+      };
+    }
+  }, [vaultLocked]);
+
+  useEffect(() => {
+    if (vaultLocked) {
+      if (autoLockTimerRef.current) {
+        clearTimeout(autoLockTimerRef.current);
+        autoLockTimerRef.current = null;
+      }
+      return;
+    }
+    
+    const handleActivity = () => {
+      if (autoLockTimerRef.current) {
+        clearTimeout(autoLockTimerRef.current);
+      }
+      
+      autoLockTimerRef.current = setTimeout(() => {
+        handleLock();
+      }, AUTO_LOCK_TIMEOUT);
+    };
+    
+    handleActivity();
+    
+    const events = ['mousedown', 'mousemove', 'keypress', 'scroll', 'touchstart'];
+    events.forEach(event => {
+      document.addEventListener(event, handleActivity, true);
+    });
+    
+    return () => {
+      events.forEach(event => {
+        document.removeEventListener(event, handleActivity, true);
+      });
+      if (autoLockTimerRef.current) {
+        clearTimeout(autoLockTimerRef.current);
+        autoLockTimerRef.current = null;
+      }
+    };
+  }, [vaultLocked, handleLock]);
+
+  const filteredEntries = useMemo(() => {
+    // Helper function to detect if entry has TOTP data
+    const hasTotpData = (entry: PasswordEntry): boolean => {
+      if (!entry.notes) return false;
+      try {
+        const parts = entry.notes.split('\n');
+        for (const part of parts) {
+          if (part.startsWith('{') && part.includes('totp')) {
+            const data = JSON.parse(part);
+            if (data.totp && data.totp.secret) {
+              return true;
+            }
+          }
+        }
+      } catch {
+        return false;
+      }
+      return false;
+    };
+
+    const query = debouncedSearchQuery.toLowerCase().trim();
+    let filtered = entries.filter(entry => {
+      const matchesSearch = !query || 
+        entry.title.toLowerCase().includes(query) ||
+        entry.username.toLowerCase().includes(query) ||
+        entry.url?.toLowerCase().includes(query) ||
+        entry.notes?.toLowerCase().includes(query);
+      const matchesCategory = selectedCategory === 'all' || entry.category === selectedCategory;
+      const matchesView = viewMode === 'all' || viewMode === 'entries' || favorites.has(entry.id);
+      
+      // TOTP filtering logic
+      const hasTotp = hasTotpData(entry);
+      const isTotpCategory = selectedCategory === 'authenticator';
+      
+      // If in authenticator category, only show entries with TOTP data
+      // If NOT in authenticator category, exclude entries with TOTP data
+      const matchesTotpFilter = isTotpCategory ? hasTotp : !hasTotp;
+      
+      return matchesSearch && matchesCategory && matchesView && matchesTotpFilter;
+    });
+    return filtered;
+  }, [entries, debouncedSearchQuery, selectedCategory, viewMode, favorites]);
+
+
+  const categoryCounts = useMemo(() => {
+    const counts = {
+      all: entries.length,
+      accounts: 0,
+      bank_cards: 0,
+      documents: 0,
+      addresses: 0,
+      notes: 0,
+      passkeys: 0,
+      authenticator: 0,
+    };
+
+    for (const entry of entries) {
+      switch (entry.category) {
+        case 'accounts':
+          counts.accounts++;
+          break;
+        case 'bank_cards':
+          counts.bank_cards++;
+          break;
+        case 'documents':
+          counts.documents++;
+          break;
+        case 'addresses':
+          counts.addresses++;
+          break;
+        case 'notes':
+          counts.notes++;
+          break;
+        case 'passkeys':
+          counts.passkeys++;
+          break;
+        case 'authenticator':
+          counts.authenticator++;
+          break;
+      }
+    }
+
+    return counts;
+  }, [entries]);
+
+  const handleMinimize = useCallback(async () => {
+    try {
+      const appWindow = getCurrentWindow();
+      await appWindow.minimize();
+    } catch (error) {
+      console.error('Failed to minimize window:', error);
+    }
+  }, []);
+
+  const handleMaximize = useCallback(async () => {
+    try {
+      const appWindow = getCurrentWindow();
+      const isMaximized = await appWindow.isMaximized();
+      if (isMaximized) {
+        await appWindow.unmaximize();
+      } else {
+        await appWindow.maximize();
+      }
+    } catch (error) {
+      console.error('Failed to maximize/unmaximize window:', error);
+    }
+  }, []);
+
+  const handleClose = useCallback(async () => {
+    try {
+      const appWindow = getCurrentWindow();
+      await appWindow.close();
+    } catch (error) {
+      console.error('Close error:', error);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'f') {
+        e.preventDefault();
+        const searchInput = document.querySelector('.search-input-main') as HTMLInputElement;
+        if (searchInput) {
+          searchInput.focus();
+          searchInput.select();
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+
+  if (vaultLocked) {
+    return (
+      <div className="app unlock-screen">
+        <div className="custom-titlebar" data-tauri-drag-region>
+          <div className="titlebar-title">
+            <Shield size={16} />
+            <span>ConfPass - Password Manager</span>
+          </div>
+          <div className="titlebar-controls">
+            <button className="titlebar-button" onClick={handleMinimize} title="Küçült">
+              <Minus size={14} />
+            </button>
+            <button className="titlebar-button" onClick={handleMaximize} title="Büyüt/Küçült">
+              <Maximize2 size={14} />
+            </button>
+            <button className="titlebar-button titlebar-button-close" onClick={handleClose} title="Kapat">
+              <X size={14} />
+            </button>
+          </div>
+        </div>
+        <div className="unlock-container">
+          <div className="lock-icon">
+            <Lock size={64} />
+          </div>
+          <h1 className="typing-title">
+            {displayTitle}
+            <span className="typing-cursor">|</span>
+          </h1>
+          <p className="subtitle typing-subtitle">
+            {displaySubtitle}
+            {displayTitle === 'ConfPass' && displaySubtitle.length < 'Güvenli Şifre Yöneticisi'.length && <span className="typing-cursor">|</span>}
+          </p>
+          <div className="unlock-form">
+            <input
+              type="password"
+              placeholder="Ana Şifre"
+              value={masterPassword}
+              onChange={(e) => {
+                setMasterPassword(e.target.value);
+                setUnlockError(false);
+              }}
+              onKeyPress={(e) => e.key === 'Enter' && handleUnlock()}
+              className={`master-password-input ${unlockError ? 'error' : ''}`}
+              autoFocus
+            />
+            <button onClick={handleUnlock} className="unlock-button">
+              <Unlock size={20} />
+              Kasa Aç
+            </button>
+            {biometricAvailable && (
+              <button 
+                onClick={handleBiometricUnlock} 
+                className="unlock-button"
+                style={{ 
+                  marginTop: '0.75rem',
+                  background: 'var(--bg-tertiary)',
+                  border: '1px solid var(--accent)'
+                }}
+              >
+                <Fingerprint size={20} />
+                Biyometrik ile Aç
+              </button>
+            )}
+          </div>
+          <p className="hint">İlk kullanımda master şifre oluşturulacaktır</p>
+          <button 
+            onClick={() => setShowForgotPasswordModal(true)}
+            style={{
+              marginTop: '1.5rem',
+              background: 'transparent',
+              border: 'none',
+              color: 'var(--text-secondary)',
+              fontSize: '0.85rem',
+              cursor: 'pointer',
+              textDecoration: 'underline',
+              padding: '0.5rem'
+            }}
+          >
+            Ana parolanızı mı unuttunuz?
+          </button>
+        </div>
+        {toast && (
+          <div className={`toast toast-${toast.type}`}>
+            {toast.type === 'success' && <CheckCircle size={20} />}
+            {toast.type === 'error' && <XCircle size={20} />}
+            {toast.type === 'info' && <Info size={20} />}
+            <span>{toast.message}</span>
+          </div>
+        )}
+        
+        {showForgotPasswordModal && (
+          <ForgotPasswordModal
+            onClose={() => setShowForgotPasswordModal(false)}
+            onReset={async () => {
+              try {
+                await invoke('reset_vault');
+                setShowForgotPasswordModal(false);
+                setMasterPassword('');
+                showToast('Kasa sıfırlandı. Yeni bir kasa oluşturabilirsiniz.', 'success');
+              } catch (error) {
+                showToast('Kasa sıfırlanırken hata oluştu', 'error');
+                console.error('Reset vault error:', error);
+              }
+            }}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="app">
+      <div className="custom-titlebar" data-tauri-drag-region>
+        <div className="titlebar-title">
+          <Shield size={16} />
+          <span>ConfPass - Password Manager</span>
+        </div>
+        <div className="titlebar-controls">
+          <button className="titlebar-button" onClick={handleMinimize} title="Küçült">
+            <Minus size={14} />
+          </button>
+          <button className="titlebar-button" onClick={handleMaximize} title="Büyüt/Küçült">
+            <Maximize2 size={14} />
+          </button>
+          <button className="titlebar-button titlebar-button-close" onClick={handleClose} title="Kapat">
+            <X size={14} />
+          </button>
+        </div>
+      </div>
+      <div className="app-body">
+        <div 
+          className="sidebar"
+          onDoubleClick={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+          }}
+        >
+        <div className="sidebar-header">
+          <div className="sidebar-logo">
+            <Shield size={24} />
+            <div>
+              <h2>ConfPass</h2>
+              <p className="sidebar-subtitle">Password Manager</p>
+            </div>
+          </div>
+          <button onClick={handleLock} className="lock-button" title="Kasa Kilitle">
+            <Lock size={18} />
+          </button>
+        </div>
+        
+        <nav className="sidebar-nav">
+          <button
+            className={`nav-item ${selectedCategory === 'all' && currentPage === 'home' && viewMode === 'all' ? 'active' : ''}`}
+            onClick={() => {
+              setCurrentPage('home');
+              setSelectedCategory('all');
+              setViewMode('all');
+            }}
+          >
+            <Home size={18} />
+            <span>Ana Sayfa</span>
+          </button>
+          <button 
+            className={`nav-item ${selectedCategory === 'accounts' && currentPage === 'home' ? 'active' : ''}`}
+            onClick={() => {
+              setCurrentPage('home');
+              setSelectedCategory('accounts');
+            }}
+          >
+            <Shield size={18} />
+            <span>Hesaplar</span>
+            {categoryCounts.accounts > 0 && <span className="nav-count">{categoryCounts.accounts}</span>}
+          </button>
+          <button 
+            className={`nav-item ${selectedCategory === 'bank_cards' && currentPage === 'home' ? 'active' : ''}`}
+            onClick={() => {
+              setCurrentPage('home');
+              setSelectedCategory('bank_cards');
+            }}
+          >
+            <Key size={18} />
+            <span>Banka kartları</span>
+            {categoryCounts.bank_cards > 0 && <span className="nav-count">{categoryCounts.bank_cards}</span>}
+          </button>
+          <button 
+            className={`nav-item ${selectedCategory === 'documents' && currentPage === 'home' ? 'active' : ''}`}
+            onClick={() => {
+              setCurrentPage('home');
+              setSelectedCategory('documents');
+            }}
+          >
+            <Key size={18} />
+            <span>Belgeler</span>
+            {categoryCounts.documents > 0 && <span className="nav-count">{categoryCounts.documents}</span>}
+          </button>
+          <button 
+            className={`nav-item ${selectedCategory === 'addresses' && currentPage === 'home' ? 'active' : ''}`}
+            onClick={() => {
+              setCurrentPage('home');
+              setSelectedCategory('addresses');
+            }}
+          >
+            <Key size={18} />
+            <span>Adresler</span>
+            {categoryCounts.addresses > 0 && <span className="nav-count">{categoryCounts.addresses}</span>}
+          </button>
+          <button 
+            className={`nav-item ${selectedCategory === 'notes' && currentPage === 'home' ? 'active' : ''}`}
+            onClick={() => {
+              setCurrentPage('home');
+              setSelectedCategory('notes');
+            }}
+          >
+            <Key size={18} />
+            <span>Notlar</span>
+            {categoryCounts.notes > 0 && <span className="nav-count">{categoryCounts.notes}</span>}
+          </button>
+          <button
+            className={`nav-item ${currentPage === 'passkeys' ? 'active' : ''}`}
+            onClick={() => setCurrentPage('passkeys')}
+          >
+            <KeyRound size={18} />
+            <span>Geçiş Anahtarları</span>
+            {categoryCounts.passkeys > 0 && <span className="nav-count">{categoryCounts.passkeys}</span>}
+          </button>
+          <button
+            className={`nav-item ${currentPage === 'authenticator' ? 'active' : ''}`}
+            onClick={() => setCurrentPage('authenticator')}
+          >
+            <Shield size={18} />
+            <span>Kimlik Doğrulayıcı</span>
+            {categoryCounts.authenticator > 0 && <span className="nav-count">{categoryCounts.authenticator}</span>}
+          </button>
+          <button className="nav-item" onClick={() => setShowPasswordGenerator(true)}>
+            <Key size={18} />
+            <span>Parola Oluşturucu</span>
+          </button>
+          <button 
+            className={`nav-item ${currentPage === 'password-check' ? 'active' : ''}`}
+            onClick={() => setCurrentPage('password-check')}
+          >
+            <Shield size={18} />
+            <span>Parola Kontrolü</span>
+            {passwordSecurity && (passwordSecurity.atRisk.length > 0 || passwordSecurity.weak.length > 0) && (
+              <span className="nav-count nav-count-warning">
+                {passwordSecurity.atRisk.length + passwordSecurity.weak.length}
+              </span>
+            )}
+          </button>
+          <button 
+            className="nav-item"
+            onClick={() => setShowActivityLog(true)}
+          >
+            <Clock size={18} />
+            <span>Etkinlik Geçmişi</span>
+          </button>
+        </nav>
+
+        <div className="sidebar-footer">
+          <button 
+            className="sidebar-footer-icon" 
+            onClick={() => setCurrentPage('settings')}
+            title="Ayarlar"
+          >
+            <SettingsIcon size={20} />
+          </button>
+          <button className="sidebar-footer-icon" title="Yardım">
+            <HelpCircle size={20} />
+          </button>
+        </div>
+      </div>
+
+      <div className="main-content">
+        {currentPage === 'settings' ? (
+          <Settings
+            onBack={() => setCurrentPage('home')}
+            showToast={showToast}
+            onResetComplete={() => {
+              setCurrentPage('home');
+              setEntries([]);
+              setVaultLocked(true);
+            }}
+          />
+        ) : currentPage === 'password-check' ? (
+          <SecurityCheckPage
+            entries={entries}
+            onBack={() => setCurrentPage('home')}
+            onEdit={setEditingEntry}
+            showToast={showToast}
+          />
+        ) : currentPage === 'authenticator' ? (
+          <AuthenticatorView
+            entries={entries}
+            onAddNew={() => setShowAddAuthenticator(true)}
+            showToast={showToast}
+            loadEntries={loadEntries}
+            setConfirmDialog={setConfirmDialog}
+          />
+        ) : currentPage === 'passkeys' ? (
+          <PasskeysView
+            entries={entries}
+            onAddNew={() => setShowAddPasskey(true)}
+            showToast={showToast}
+            loadEntries={loadEntries}
+            setConfirmDialog={setConfirmDialog}
+          />
+        ) : selectedCategory === 'all' && viewMode === 'all' ? (
+          <Dashboard
+            entries={entries}
+            favorites={favorites}
+            passwordSecurity={passwordSecurity}
+            onNavigateToCategory={(category) => {
+              setSelectedCategory(category);
+            }}
+            onNavigateToPasswordCheck={() => setCurrentPage('password-check')}
+            onNavigateToSettings={() => setCurrentPage('settings')}
+            showToast={showToast}
+          />
+        ) : (
+        <>
+        <div className="main-header">
+          <h1 className="main-title">
+            {viewMode === 'favorites' 
+              ? 'Favoriler' 
+              : CATEGORY_NAMES[selectedCategory] || 'Tüm Girişler'}
+            {filteredEntries.length > 0 && (
+              <span className="main-title-count"> ({filteredEntries.length})</span>
+            )}
+          </h1>
+          <div className="main-header-actions">
+            <div className="add-button-wrapper">
+              {selectedCategory === 'all' ? (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAddDropdown(!showAddDropdown);
+                    }}
+                    className="add-button-primary"
+                  >
+                    <Plus size={18} />
+                    Ekle
+                    <ChevronDown size={14} className={showAddDropdown ? 'open' : ''} />
+                  </button>
+                  {showAddDropdown && (
+                    <div className="add-dropdown-menu" onClick={(e) => e.stopPropagation()}>
+                      {CATEGORY_OPTIONS.filter(opt => opt.value !== 'passkeys' && opt.value !== 'authenticator').map(option => (
+                        <button
+                          key={option.value}
+                          onClick={() => {
+                            setShowAddModal(true);
+                            setShowAddDropdown(false);
+                            setTimeout(() => {
+                              const event = new CustomEvent('setAddCategory', { detail: option.value });
+                              window.dispatchEvent(event);
+                            }, 100);
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : (
+                <button
+                  onClick={() => {
+                    setShowAddModal(true);
+                    setTimeout(() => {
+                      const event = new CustomEvent('setAddCategory', { detail: selectedCategory });
+                      window.dispatchEvent(event);
+                    }, 100);
+                  }}
+                  className="add-button-primary"
+                >
+                  <Plus size={18} />
+                  {CATEGORY_NAMES[selectedCategory]} Ekle
+                </button>
+              )}
+            </div>
+            <div className="import-export-wrapper">
+              <button 
+                className="icon-header-button" 
+                title="Dışa Aktar"
+                onClick={async () => {
+                  try {
+                    const data = await invoke<string>('export_vault');
+                    const blob = new Blob([data], { type: 'application/json' });
+                    const url = URL.createObjectURL(blob);
+                    const a = document.createElement('a');
+                    a.href = url;
+                    a.download = `confpass-export-${new Date().toISOString().split('T')[0]}.json`;
+                    a.click();
+                    URL.revokeObjectURL(url);
+                    showToast('Kasa başarıyla dışa aktarıldı', 'success');
+                  } catch (error) {
+                    const errorStr = String(error || '');
+                    showToast(errorStr || 'Dışa aktarma hatası', 'error');
+                  }
+                }}
+              >
+                <Download size={18} />
+              </button>
+            </div>
+            <div className="view-options">
+              <button
+                className={`view-option ${viewMode === 'entries' || (viewMode === 'all' && selectedCategory !== 'all') ? 'active' : ''}`}
+                onClick={() => setViewMode('entries')}
+                title="Tümü"
+              >
+                <Grid3x3 size={18} />
+              </button>
+              <button
+                className={`view-option ${viewMode === 'favorites' ? 'active' : ''}`}
+                onClick={() => setViewMode('favorites')}
+                title="Favoriler"
+              >
+                <Star size={18} />
+              </button>
+            </div>
+            <div className="layout-toggle">
+              <button 
+                className={`layout-option ${layoutMode === 'grid' ? 'active' : ''}`}
+                onClick={() => setLayoutMode('grid')}
+                title="Grid Görünüm"
+              >
+                <LayoutGrid size={18} />
+              </button>
+              <button 
+                className={`layout-option ${layoutMode === 'list' ? 'active' : ''}`}
+                onClick={() => setLayoutMode('list')}
+                title="Liste Görünüm"
+              >
+                <List size={18} />
+              </button>
+            </div>
+            <div className="search-container-main">
+              <Search size={18} />
+              <input
+                type="text"
+                placeholder="Ara (Ctrl+F)"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="search-input-main"
+              />
+            </div>
+          </div>
+        </div>
+
+        <div className="content-area" onClick={() => {
+          showAddDropdown && setShowAddDropdown(false);
+        }} onKeyDown={(e) => {
+          if (e.key === 'Escape') {
+            setShowAddDropdown(false);
+          }
+        }}>
+          <div className={`entries-grid ${layoutMode === 'list' ? 'list-view' : ''}`}>
+            {filteredEntries.length === 0 ? (
+              <div className="empty-state">
+                <Key size={64} />
+                <p>
+                  {viewMode === 'favorites' 
+                    ? 'Favori kayıt yok' 
+                    : searchQuery 
+                      ? 'Arama sonucu bulunamadı' 
+                      : 'Henüz kayıt yok'}
+                </p>
+                <p className="empty-subtitle">
+                  {viewMode === 'favorites'
+                    ? 'Favorilere eklemek için kayıt kartındaki yıldız ikonuna tıklayın'
+                    : searchQuery 
+                      ? 'Farklı bir arama terimi deneyin' 
+                      : 'Üstteki ekle butonunu kullanarak ilk şifrenizi ekleyin'}
+                </p>
+              </div>
+            ) : (
+              <>
+                {filteredEntries.map(entry => (
+                  <EntryCard
+                    key={entry.id}
+                    entry={entry}
+                    isPasswordVisible={!!showPasswords[entry.id]}
+                    onTogglePassword={(id) => setShowPasswords(prev => ({ ...prev, [id]: !prev[id] }))}
+                    onEdit={setEditingEntry}
+                    showToast={showToast}
+                    loadEntries={loadEntries}
+                    setConfirmDialog={setConfirmDialog}
+                    isSelected={false}
+                    isFavorite={favorites.has(entry.id)}
+                    onToggleFavorite={(id) => {
+                      setFavorites(prev => {
+                        const newSet = new Set(prev);
+                        if (newSet.has(id)) {
+                          newSet.delete(id);
+                          if (viewMode === 'favorites') {
+                            showToast('Favorilerden kaldırıldı', 'info');
+                          }
+                        } else {
+                          newSet.add(id);
+                          showToast('Favorilere eklendi', 'success');
+                        }
+                        return newSet;
+                      });
+                    }}
+                    onShowTotp={(secret, issuer, account) => {
+                      setTotpModal({ secret, issuer, account });
+                    }}
+                  />
+                ))}
+              </>
+            )}
+          </div>
+        </div>
+        </>
+        )}
+      </div>
+      </div>
+
+      {showAddModal && (
+        <AddEntryModal
+          onClose={() => {
+            setShowAddModal(false);
+            loadEntries();
+          }}
+          showToast={showToast}
+          initialCategory={selectedCategory === 'all' || selectedCategory === 'favorites' ? 'accounts' : selectedCategory}
+        />
+      )}
+
+      {showPasswordGenerator && (
+        <PasswordGeneratorModal
+          onClose={() => setShowPasswordGenerator(false)}
+          showToast={showToast}
+        />
+      )}
+
+      {totpModal && (
+        <TotpModal
+          secret={totpModal.secret}
+          issuer={totpModal.issuer}
+          account={totpModal.account}
+          onClose={() => setTotpModal(null)}
+          showToast={showToast}
+        />
+      )}
+
+      {showActivityLog && (
+        <ActivityLogModal
+          onClose={() => setShowActivityLog(false)}
+        />
+      )}
+
+      {showAddAuthenticator && (
+        <AddAuthenticatorModal
+          onClose={() => setShowAddAuthenticator(false)}
+          showToast={showToast}
+          loadEntries={loadEntries}
+        />
+      )}
+
+      {showAddPasskey && (
+        <div className="modal-overlay" onClick={() => setShowAddPasskey(false)}>
+          <div className="modal" onClick={(e) => e.stopPropagation()}>
+            <AddPasskeyModal
+              onClose={() => {
+                setShowAddPasskey(false);
+                loadEntries();
+              }}
+              showToast={showToast}
+            />
+          </div>
+        </div>
+      )}
+
+      {editingEntry && (
+        <EditEntryModal
+          entry={editingEntry}
+          onClose={() => {
+            setEditingEntry(null);
+            loadEntries();
+          }}
+          showToast={showToast}
+        />
+      )}
+
+      {toast && (
+        <div className={`toast toast-${toast.type}`}>
+          {toast.type === 'success' && <CheckCircle size={20} />}
+          {toast.type === 'error' && <XCircle size={20} />}
+          {toast.type === 'info' && <Info size={20} />}
+          <span>{toast.message}</span>
+        </div>
+      )}
+
+      {detectedPasskey && (
+        <div className="modal-overlay" onClick={() => setDetectedPasskey(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+            <h2>Geçiş Anahtarı Algılandı</h2>
+            <div style={{ marginBottom: '1.5rem' }}>
+              <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>
+                Yeni bir geçiş anahtarı kaydı algılandı. Bu geçiş anahtarını ConfPass'e eklemek ister misiniz?
+              </p>
+              <div style={{ 
+                background: 'var(--bg-tertiary)', 
+                padding: '1rem', 
+                borderRadius: '8px',
+                marginBottom: '1rem'
+              }}>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Servis:</strong> {detectedPasskey.rpId}
+                </div>
+                <div style={{ marginBottom: '0.5rem' }}>
+                  <strong>Kullanıcı:</strong> {detectedPasskey.userName}
+                </div>
+                {detectedPasskey.userDisplayName && (
+                  <div>
+                    <strong>Görünen Ad:</strong> {detectedPasskey.userDisplayName}
+                  </div>
+                )}
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button 
+                className="cancel-button" 
+                onClick={() => setDetectedPasskey(null)}
+              >
+                İptal
+              </button>
+              <button 
+                className="submit-button" 
+                onClick={async () => {
+                  if (!detectedPasskey) return;
+                  
+                  try {
+                    const passkeyData: PasskeyData = {
+                      username: detectedPasskey.userName,
+                      email: detectedPasskey.userDisplayName.includes('@') ? detectedPasskey.userDisplayName : undefined,
+                      domain: detectedPasskey.rpId,
+                    };
+
+                    let url = detectedPasskey.rpId;
+                    if (!url.startsWith('http://') && !url.startsWith('https://')) {
+                      url = `https://${url}`;
+                    }
+
+                    await invoke('add_password_entry', {
+                      title: detectedPasskey.rpId.split('.')[0] || detectedPasskey.rpId,
+                      username: detectedPasskey.userName,
+                      password: '',
+                      url: url,
+                      notes: JSON.stringify(passkeyData),
+                      category: 'passkeys',
+                    });
+                    
+                    try {
+                      await invoke('log_activity', {
+                        action: 'create',
+                        entry_id: null,
+                        details: `Geçiş anahtarı otomatik eklendi: ${detectedPasskey.rpId}`
+                      });
+                    } catch (logError) {
+                      console.error('Activity log error:', logError);
+                    }
+                    
+                    showToast('Geçiş anahtarı başarıyla eklendi', 'success');
+                    setDetectedPasskey(null);
+                    loadEntries();
+                  } catch (error) {
+                    const errorStr = String(error || '');
+                    let errorMessage = 'Geçiş anahtarı eklenirken hata oluştu';
+                    
+                    if (errorStr.includes('Kasa kilitli')) {
+                      errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
+                    } else if (errorStr) {
+                      errorMessage = errorStr;
+                    }
+                    
+                    showToast(errorMessage, 'error');
+                  }
+                }}
+              >
+                Ekle
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {confirmDialog && (
+        <div className="modal-overlay" onClick={() => setConfirmDialog(null)}>
+          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="confirm-dialog-header">
+              <AlertCircle size={24} />
+              <h3>Onay</h3>
+            </div>
+            <p className="confirm-dialog-message">{confirmDialog.message}</p>
+            <div className="confirm-dialog-actions">
+              <button className="cancel-button" onClick={() => setConfirmDialog(null)}>
+                İptal
+              </button>
+              <button className="submit-button" onClick={confirmDialog.onConfirm}>
+                Onayla
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+const CustomDropdown = memo(function CustomDropdown({ value, onChange, options }: { value: string; onChange: (value: string) => void; options: { value: string; label: string }[] }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const selectedLabel = useMemo(() => options.find(opt => opt.value === value)?.label || value, [options, value]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (!target.closest('.custom-dropdown')) {
+        setIsOpen(false);
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('mousedown', handleClickOutside);
+      return () => document.removeEventListener('mousedown', handleClickOutside);
+    }
+  }, [isOpen]);
+
+  const handleToggle = useCallback(() => {
+    setIsOpen(prev => !prev);
+  }, []);
+
+  const handleSelect = useCallback((optionValue: string) => {
+    onChange(optionValue);
+    setIsOpen(false);
+  }, [onChange]);
+
+  return (
+    <div className="custom-dropdown">
+      <button
+        type="button"
+        className="custom-dropdown-button"
+        onClick={handleToggle}
+      >
+        <span>{selectedLabel}</span>
+        <ChevronDown size={16} className={isOpen ? 'open' : ''} />
+      </button>
+      {isOpen && (
+        <div className="custom-dropdown-menu">
+          {options.map(option => (
+            <button
+              key={option.value}
+              type="button"
+              className={`custom-dropdown-item ${value === option.value ? 'selected' : ''}`}
+              onClick={() => handleSelect(option.value)}
+            >
+              {option.label}
+              {value === option.value && <CheckCircle size={16} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+});
+
+function AddEntryModal({ onClose, showToast, initialCategory = 'accounts' }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void; initialCategory?: string }) {
+  const [category, setCategory] = useState(initialCategory);
+
+  useEffect(() => {
+    setCategory(initialCategory);
+  }, [initialCategory]);
+
+  useEffect(() => {
+    const handleSetCategory = (e: CustomEvent) => {
+      setCategory(e.detail);
+    };
+    window.addEventListener('setAddCategory' as any, handleSetCategory as EventListener);
+    return () => {
+      window.removeEventListener('setAddCategory' as any, handleSetCategory as EventListener);
+    };
+  }, []);
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content modal-card-form" onClick={(e) => e.stopPropagation()}>
+        {category === 'accounts' && <AddAccountModal onClose={onClose} showToast={showToast} />}
+        {category === 'bank_cards' && <AddBankCardModal onClose={onClose} showToast={showToast} />}
+        {category === 'documents' && <AddDocumentModal onClose={onClose} showToast={showToast} />}
+        {category === 'addresses' && <AddAddressModal onClose={onClose} showToast={showToast} />}
+        {category === 'notes' && <AddNoteModal onClose={onClose} showToast={showToast} />}
+        {category === 'passkeys' && <AddPasskeyModal onClose={onClose} showToast={showToast} />}
+      </div>
+    </div>
+  );
+}
+
+function AddAccountModal({ onClose, showToast }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+  const [title, setTitle] = useState('');
+  const [username, setUsername] = useState('');
+  const [password, setPassword] = useState('');
+  const [url, setUrl] = useState('');
+  const [notes, setNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const generatePassword = async () => {
+    try {
+      const pwd = await invoke<string>('generate_password', {
+        length: 16,
+        includeUppercase: true,
+        includeLowercase: true,
+        includeNumbers: true,
+        includeSymbols: true,
+      });
+      setPassword(pwd);
+    } catch (error) {
+      console.error('Error generating password:', error);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!title.trim() || !username.trim() || !password.trim()) {
+      showToast('Lütfen tüm zorunlu alanları doldurun', 'error');
+      return;
+    }
+
+    if (url.trim() && !validateUrl(url.trim())) {
+      showToast('Geçersiz URL formatı. http:// veya https:// ile başlamalı', 'error');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await invoke('add_password_entry', {
+        title: title.trim(),
+        username: username.trim(),
+        password,
+        url: url.trim() || null,
+        notes: notes.trim() || null,
+        category: 'accounts',
+      });
+
+      try {
+        await invoke('log_activity', {
+          action: 'create',
+          entry_id: null,
+          details: `Hesap eklendi: ${title.trim()}`
+        });
+      } catch (logError) {
+        console.error('Activity log error:', logError);
+      }
+
+      showToast('Hesap başarıyla eklendi', 'success');
+      setTimeout(() => {
+        onClose();
+      }, 300);
+    } catch (error) {
+      const errorStr = String(error || '');
+      let errorMessage = 'Kayıt eklenirken hata oluştu';
+      
+      if (errorStr.includes('Kasa kilitli')) {
+        errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
+      } else if (errorStr.includes('kaydedilemedi')) {
+        errorMessage = 'Kayıt eklendi ancak kaydedilemedi. Lütfen tekrar deneyin.';
+      } else if (errorStr.includes('Master password')) {
+        errorMessage = 'Master password bulunamadı. Lütfen kasa kilidini açın.';
+      } else if (errorStr) {
+        errorMessage = errorStr;
+      }
+      
+      showToast(errorMessage, 'error');
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <h2>Yeni Hesap Ekle</h2>
+      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
+      </div>
+      <div className="form-group">
+        <label>Başlık *</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="örn: Gmail Hesabı"
+        />
+      </div>
+      <div className="form-group">
+        <label>Kullanıcı Adı *</label>
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="kullanıcı adı veya e-posta"
+        />
+      </div>
+      <div className="form-group">
+        <label>Şifre *</label>
+        <div className="password-input-group">
+          <input
+            type="text"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="şifre"
+          />
+          <button onClick={generatePassword} className="generate-btn">
+            Oluştur
+          </button>
+        </div>
+      </div>
+      <div className="form-group">
+        <label>Web Sitesi Adresi</label>
+        <input
+          type="text"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://example.com"
+        />
+      </div>
+      <div className="form-group">
+        <label>Notlar</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Ek notlar..."
+          rows={3}
+        />
+      </div>
+    </>
+  );
+}
+
+function AddBankCardModal({ onClose, showToast }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+  const [cardName, setCardName] = useState('');
+  const [cardNumber, setCardNumber] = useState('');
+  const [expiryMonth, setExpiryMonth] = useState('');
+  const [expiryYear, setExpiryYear] = useState('');
+  const [cvv, setCvv] = useState('');
+  const [cardholderName, setCardholderName] = useState('');
+  const [cardType, setCardType] = useState('Visa');
+  const [cardColor, setCardColor] = useState('#1a1a1f');
+  const [showCardNumber, setShowCardNumber] = useState(false);
+  const [showCvv, setShowCvv] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const cardColors = [
+    { value: '#1a1a1f', label: 'Koyu Gri' },
+    { value: '#ff6b35', label: 'Turuncu' },
+    { value: '#4a90e2', label: 'Mavi' },
+    { value: '#f5a623', label: 'Altın' },
+    { value: '#50c878', label: 'Yeşil' },
+    { value: '#e8e8e8', label: 'Açık Gri' },
+  ];
+
+  const formatCardNumber = (value: string) => {
+    const cleaned = value.replace(/\s/g, '').replace(/\D/g, '');
+    const formatted = cleaned.match(/.{1,4}/g)?.join(' ') || cleaned;
+    return formatted.slice(0, 19);
+  };
+
+  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatCardNumber(e.target.value);
+    setCardNumber(formatted);
+  };
+
+  const handleCvvChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, '').slice(0, 4);
+    setCvv(value);
+  };
+
+  const handleSubmit = async () => {
+    if (!cardName.trim() || !cardNumber.trim() || !expiryMonth || !expiryYear || !cvv.trim() || !cardholderName.trim()) {
+      showToast('Lütfen tüm zorunlu alanları doldurun', 'error');
+      return;
+    }
+
+    if (cardNumber.replace(/\s/g, '').length < 13) {
+      showToast('Kart numarası en az 13 haneli olmalıdır', 'error');
+      return;
+    }
+
+    if (cvv.length < 3) {
+      showToast('CVV en az 3 haneli olmalıdır', 'error');
+      return;
+    }
+
+    const cardData = {
+      cardNumber: cardNumber.replace(/\s/g, ''),
+      expiry: `${expiryMonth}/${expiryYear}`,
+      cvv,
+      cardholderName,
+      cardType,
+      cardColor,
+    };
+
+    setIsSubmitting(true);
+    try {
+      await invoke('add_password_entry', {
+        title: cardName.trim(),
+        username: cardNumber.replace(/\s/g, ''),
+        password: cvv,
+        url: null,
+        notes: JSON.stringify(cardData),
+        category: 'bank_cards',
+      });
+      
+      try {
+        await invoke('log_activity', {
+          action: 'create',
+          entry_id: null,
+          details: `Banka kartı eklendi: ${cardName.trim()}`
+        });
+      } catch (logError) {
+        console.error('Activity log error:', logError);
+      }
+      
+      showToast('Banka kartı başarıyla eklendi', 'success');
+      setTimeout(() => {
+        onClose();
+      }, 300);
+    } catch (error) {
+      const errorStr = String(error || '');
+      let errorMessage = 'Kart eklenirken hata oluştu';
+      
+      if (errorStr.includes('Kasa kilitli')) {
+        errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
+      } else if (errorStr.includes('kaydedilemedi')) {
+        errorMessage = 'Kart eklendi ancak kaydedilemedi. Lütfen tekrar deneyin.';
+      } else if (errorStr.includes('Master password')) {
+        errorMessage = 'Master password bulunamadı. Lütfen kasa kilidini açın.';
+      } else if (errorStr) {
+        errorMessage = errorStr;
+      }
+      
+      showToast(errorMessage, 'error');
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <h2>Banka Kartı Ekle</h2>
+      
+      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
+      </div>
+      
+      <div className="bank-cards-container" style={{
+        position: 'relative',
+        marginBottom: '2rem',
+        height: '420px',
+        perspective: '1200px',
+      }}>
+        <div className="bank-card-front" style={{ 
+          background: `linear-gradient(135deg, ${cardColor} 0%, ${cardColor}dd 100%)`,
+          borderRadius: '16px',
+          padding: '2rem',
+          position: 'relative',
+          width: '100%',
+          height: '380px',
+          overflow: 'visible',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+          transform: 'perspective(1000px) rotateY(0deg)',
+          transition: 'all 0.3s',
+        }}>
+          <div style={{
+            position: 'absolute',
+            top: '1rem',
+            right: '1rem',
+            fontSize: '0.75rem',
+            color: 'rgba(255, 255, 255, 0.6)',
+            fontWeight: 600,
+          }}>
+            {cardType}
+          </div>
+          
+          <div style={{
+            marginTop: '2rem',
+            marginBottom: '1rem',
+          }}>
+            <div style={{
+              fontSize: '0.7rem',
+              color: 'rgba(255, 255, 255, 0.5)',
+              marginBottom: '0.5rem',
+            }}>
+              Kart numarası
+            </div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}>
+              <input
+                type={showCardNumber ? 'text' : 'password'}
+                value={cardNumber}
+                onChange={handleCardNumberChange}
+                placeholder="1234 5678 9012 3456"
+                maxLength={19}
+                style={{
+                  flex: 1,
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  color: 'rgba(255, 255, 255, 0.95)',
+                  fontSize: '1rem',
+                  letterSpacing: '2px',
+                  fontFamily: 'monospace',
+                  fontWeight: 600,
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowCardNumber(!showCardNumber)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {showCardNumber ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await clearClipboard(cardNumber.replace(/\s/g, ''), 60000);
+                    showToast('Kart numarası kopyalandı', 'success');
+                  } catch (error) {
+                    showToast('Kopyalama başarısız', 'error');
+                  }
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Copy size={18} />
+              </button>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            gap: '1rem',
+            marginTop: '1.25rem',
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{
+                fontSize: '0.7rem',
+                color: 'rgba(255, 255, 255, 0.5)',
+                marginBottom: '0.5rem',
+              }}>
+                AA
+              </div>
+              <CustomDropdown
+                value={expiryMonth || 'MM'}
+                onChange={(val) => {
+                  const month = Math.min(12, Math.max(1, parseInt(val) || 0));
+                  setExpiryMonth(month.toString().padStart(2, '0'));
+                }}
+                options={Array.from({ length: 12 }, (_, i) => ({
+                  value: (i + 1).toString().padStart(2, '0'),
+                  label: (i + 1).toString().padStart(2, '0'),
+                }))}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{
+                fontSize: '0.7rem',
+                color: 'rgba(255, 255, 255, 0.5)',
+                marginBottom: '0.5rem',
+              }}>
+                YYYY
+              </div>
+              <input
+                type="text"
+                value={expiryYear}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '').slice(0, 4);
+                  setExpiryYear(value);
+                }}
+                placeholder="2025"
+                maxLength={4}
+                style={{
+                  width: '100%',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  color: 'rgba(255, 255, 255, 0.95)',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  outline: 'none',
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{
+            marginTop: '1.25rem',
+          }}>
+            <div style={{
+              fontSize: '0.7rem',
+              color: 'rgba(255, 255, 255, 0.5)',
+              marginBottom: '0.5rem',
+            }}>
+              Kart sahibi
+            </div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}>
+              <input
+                type="text"
+                value={cardholderName}
+                onChange={(e) => setCardholderName(e.target.value.toUpperCase())}
+                placeholder="EMRE YILMAZ"
+                style={{
+                  flex: 1,
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  color: 'rgba(255, 255, 255, 0.95)',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await clearClipboard(cardholderName, 60000);
+                    showToast('Kart sahibi adı kopyalandı', 'success');
+                  } catch (error) {
+                    showToast('Kopyalama başarısız', 'error');
+                  }
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Copy size={18} />
+              </button>
+              <CustomDropdown
+                value={cardType}
+                onChange={setCardType}
+                options={[
+                  { value: 'Visa', label: 'Visa' },
+                  { value: 'Mastercard', label: 'Mastercard' },
+                  { value: 'American Express', label: 'American Express' },
+                  { value: 'UATP', label: 'UATP' },
+                  { value: 'Diğer', label: 'Diğer' },
+                ]}
+              />
+            </div>
+          </div>
+
+          <div style={{
+            marginTop: '1.25rem',
+          }}>
+            <div style={{
+              fontSize: '0.7rem',
+              color: 'rgba(255, 255, 255, 0.5)',
+              marginBottom: '0.5rem',
+              textTransform: 'uppercase',
+            }}>
+              CVC2/CVV2
+            </div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}>
+              <input
+                type={showCvv ? 'text' : 'password'}
+                value={cvv}
+                onChange={handleCvvChange}
+                placeholder="123"
+                maxLength={4}
+                style={{
+                  flex: 1,
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  color: 'rgba(255, 255, 255, 0.95)',
+                  fontSize: '1.2rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 700,
+                  letterSpacing: '2px',
+                  textAlign: 'center',
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowCvv(!showCvv)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                }}
+              >
+                {showCvv ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await clearClipboard(cvv, 30000);
+                    showToast('CVV kopyalandı (30 saniye sonra temizlenecek)', 'success');
+                  } catch (error) {
+                    showToast('Kopyalama başarısız', 'error');
+                  }
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Copy size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="color-swatches" style={{
+        display: 'flex',
+        gap: '0.75rem',
+        marginBottom: '0.5rem',
+        justifyContent: 'center',
+      }}>
+        {cardColors.map((color) => (
+          <button
+            key={color.value}
+            type="button"
+            onClick={() => setCardColor(color.value)}
+            className="color-swatch"
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              background: color.value,
+              border: cardColor === color.value ? '3px solid var(--accent)' : '2px solid var(--border)',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              boxShadow: cardColor === color.value 
+                ? '0 4px 12px rgba(0, 217, 255, 0.4), 0 0 0 2px rgba(0, 217, 255, 0.2)' 
+                : '0 2px 8px rgba(0, 0, 0, 0.2)',
+              transform: cardColor === color.value ? 'scale(1.15)' : 'scale(1)',
+            }}
+            title={color.label}
+          />
+        ))}
+      </div>
+
+      <div className="form-group" style={{ marginTop: '0.5rem' }}>
+        <label>Kart Adı *</label>
+        <input
+          type="text"
+          value={cardName}
+          onChange={(e) => setCardName(e.target.value)}
+          placeholder="örn: Ana Kartım"
+        />
+      </div>
+    </>
+  );
+}
+
+function AddDocumentModal({ onClose, showToast }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+  const [documentName, setDocumentName] = useState('');
+  const [documentType, setDocumentType] = useState('');
+  const [filePath, setFilePath] = useState('');
+  const [notes, setNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!documentName.trim()) {
+      showToast('Lütfen belge adını girin', 'error');
+      return;
+    }
+
+    const documentData = {
+      documentType,
+      filePath,
+    };
+
+    setIsSubmitting(true);
+    try {
+      await invoke('add_password_entry', {
+        title: documentName.trim(),
+        username: documentType || 'Belge',
+        password: 'document',
+        url: null,
+        notes: JSON.stringify(documentData) + (notes.trim() ? '\n' + notes.trim() : ''),
+        category: 'documents',
+      });
+      
+      try {
+        await invoke('log_activity', {
+          action: 'create',
+          entry_id: null,
+          details: `Belge eklendi: ${documentName.trim()}`
+        });
+      } catch (logError) {
+        console.error('Activity log error:', logError);
+      }
+      
+      showToast('Belge başarıyla eklendi', 'success');
+      setTimeout(() => {
+        onClose();
+      }, 300);
+    } catch (error) {
+      const errorStr = String(error || '');
+      let errorMessage = 'Belge eklenirken hata oluştu';
+      
+      if (errorStr.includes('Kasa kilitli')) {
+        errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
+      } else if (errorStr.includes('kaydedilemedi')) {
+        errorMessage = 'Belge eklendi ancak kaydedilemedi. Lütfen tekrar deneyin.';
+      } else if (errorStr.includes('Master password')) {
+        errorMessage = 'Master password bulunamadı. Lütfen kasa kilidini açın.';
+      } else if (errorStr) {
+        errorMessage = errorStr;
+      }
+      
+      showToast(errorMessage, 'error');
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <h2>Belge Ekle</h2>
+      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
+      </div>
+      <div className="form-group">
+        <label>Belge Adı *</label>
+        <input
+          type="text"
+          value={documentName}
+          onChange={(e) => setDocumentName(e.target.value)}
+          placeholder="örn: Pasaport, Kimlik"
+        />
+      </div>
+      <div className="form-group">
+        <label>Belge Tipi</label>
+        <input
+          type="text"
+          value={documentType}
+          onChange={(e) => setDocumentType(e.target.value)}
+          placeholder="örn: Pasaport, Sürücü Belgesi"
+        />
+      </div>
+      <div className="form-group">
+        <label>Dosya Yolu</label>
+        <input
+          type="text"
+          value={filePath}
+          onChange={(e) => setFilePath(e.target.value)}
+          placeholder="C:\Users\...\belge.pdf"
+        />
+      </div>
+      <div className="form-group">
+        <label>Notlar</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Ek notlar..."
+          rows={3}
+        />
+      </div>
+    </>
+  );
+}
+
+function AddAddressModal({ onClose, showToast }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+  const [addressName, setAddressName] = useState('');
+  const [streetAddress, setStreetAddress] = useState('');
+  const [city, setCity] = useState('');
+  const [state, setState] = useState('');
+  const [postalCode, setPostalCode] = useState('');
+  const [country, setCountry] = useState('Türkiye');
+  const [notes, setNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!addressName.trim() || !streetAddress.trim() || !city.trim()) {
+      showToast('Lütfen zorunlu alanları doldurun', 'error');
+      return;
+    }
+
+    const addressData = {
+      street: streetAddress,
+      city,
+      state,
+      postalCode,
+      country,
+    };
+
+    setIsSubmitting(true);
+    try {
+      await invoke('add_password_entry', {
+        title: addressName.trim(),
+        username: streetAddress.trim(),
+        password: postalCode,
+        url: null,
+        notes: JSON.stringify(addressData) + (notes.trim() ? '\n' + notes.trim() : ''),
+        category: 'addresses',
+      });
+      
+      try {
+        await invoke('log_activity', {
+          action: 'create',
+          entry_id: null,
+          details: `Adres eklendi: ${addressName.trim()}`
+        });
+      } catch (logError) {
+        console.error('Activity log error:', logError);
+      }
+      
+      showToast('Adres başarıyla eklendi', 'success');
+      setTimeout(() => {
+        onClose();
+      }, 300);
+    } catch (error) {
+      const errorStr = String(error || '');
+      let errorMessage = 'Adres eklenirken hata oluştu';
+      
+      if (errorStr.includes('Kasa kilitli')) {
+        errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
+      } else if (errorStr.includes('kaydedilemedi')) {
+        errorMessage = 'Adres eklendi ancak kaydedilemedi. Lütfen tekrar deneyin.';
+      } else if (errorStr.includes('Master password')) {
+        errorMessage = 'Master password bulunamadı. Lütfen kasa kilidini açın.';
+      } else if (errorStr) {
+        errorMessage = errorStr;
+      }
+      
+      showToast(errorMessage, 'error');
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <h2>Adres Ekle</h2>
+      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
+      </div>
+      <div className="form-group">
+        <label>Adres Adı *</label>
+        <input
+          type="text"
+          value={addressName}
+          onChange={(e) => setAddressName(e.target.value)}
+          placeholder="örn: Ev Adresim, İş Adresim"
+        />
+      </div>
+      <div className="form-group">
+        <label>Sokak Adresi *</label>
+        <input
+          type="text"
+          value={streetAddress}
+          onChange={(e) => setStreetAddress(e.target.value)}
+          placeholder="Sokak, cadde, mahalle"
+        />
+      </div>
+      <div className="form-row">
+        <div className="form-group" style={{ flex: 1 }}>
+          <label>Şehir *</label>
+          <input
+            type="text"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="İstanbul"
+          />
+        </div>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label>İlçe/Eyalet</label>
+          <input
+            type="text"
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+            placeholder="Kadıköy"
+          />
+        </div>
+      </div>
+      <div className="form-row">
+        <div className="form-group" style={{ flex: 1 }}>
+          <label>Posta Kodu</label>
+          <input
+            type="text"
+            value={postalCode}
+            onChange={(e) => setPostalCode(e.target.value)}
+            placeholder="34000"
+          />
+        </div>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label>Ülke</label>
+          <input
+            type="text"
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+            placeholder="Türkiye"
+          />
+        </div>
+      </div>
+      <div className="form-group">
+        <label>Notlar</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Ek notlar..."
+          rows={3}
+        />
+      </div>
+    </>
+  );
+}
+
+function AddPasskeyModal({ onClose, showToast }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+  const [serviceName, setServiceName] = useState('');
+  const [domain, setDomain] = useState('');
+  const [username, setUsername] = useState('');
+  const [email, setEmail] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!serviceName.trim() || !domain.trim()) {
+      showToast('Lütfen servis adı ve domain girin', 'error');
+      return;
+    }
+
+    if (!username.trim() && !email.trim()) {
+      showToast('Lütfen kullanıcı adı veya e-posta girin', 'error');
+      return;
+    }
+
+    if (domain.trim() && !validateUrl(domain.trim()) && !domain.trim().includes('.')) {
+      showToast('Geçersiz domain formatı', 'error');
+      return;
+    }
+
+    const passkeyData: PasskeyData = {
+      username: username.trim() || undefined,
+      email: email.trim() || undefined,
+      domain: domain.trim(),
+    };
+
+    setIsSubmitting(true);
+    try {
+      let url = domain.trim();
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = `https://${url}`;
+      }
+
+      await invoke('add_password_entry', {
+        title: serviceName.trim(),
+        username: username.trim() || email.trim() || '',
+        password: '',
+        url: url,
+        notes: JSON.stringify(passkeyData),
+        category: 'passkeys',
+      });
+      
+      try {
+        await invoke('log_activity', {
+          action: 'create',
+          entry_id: null,
+          details: `Geçiş anahtarı eklendi: ${serviceName.trim()}`
+        });
+      } catch (logError) {
+        console.error('Activity log error:', logError);
+      }
+      
+      showToast('Geçiş anahtarı başarıyla eklendi', 'success');
+      setTimeout(() => {
+        onClose();
+      }, 300);
+    } catch (error) {
+      const errorStr = String(error || '');
+      let errorMessage = 'Geçiş anahtarı eklenirken hata oluştu';
+      
+      if (errorStr.includes('Kasa kilitli')) {
+        errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
+      } else if (errorStr.includes('kaydedilemedi')) {
+        errorMessage = 'Geçiş anahtarı eklendi ancak kaydedilemedi. Lütfen tekrar deneyin.';
+      } else if (errorStr.includes('Master password')) {
+        errorMessage = 'Master password bulunamadı. Lütfen kasa kilidini açın.';
+      } else if (errorStr) {
+        errorMessage = errorStr;
+      }
+      
+      showToast(errorMessage, 'error');
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <h2>Geçiş Anahtarı Ekle</h2>
+      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
+      </div>
+      <div className="form-group">
+        <label>Servis Adı *</label>
+        <input
+          type="text"
+          value={serviceName}
+          onChange={(e) => setServiceName(e.target.value)}
+          placeholder="Örn: Google, GitHub, Discord"
+          disabled={isSubmitting}
+          autoFocus
+        />
+      </div>
+      <div className="form-group">
+        <label>Domain/URL *</label>
+        <input
+          type="text"
+          value={domain}
+          onChange={(e) => setDomain(e.target.value)}
+          placeholder="Örn: google.com veya https://google.com"
+          disabled={isSubmitting}
+        />
+      </div>
+      <div className="form-group">
+        <label>Kullanıcı Adı</label>
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="Kullanıcı adı (opsiyonel)"
+          disabled={isSubmitting}
+        />
+      </div>
+      <div className="form-group">
+        <label>E-posta</label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="E-posta adresi (opsiyonel)"
+          disabled={isSubmitting}
+        />
+      </div>
+      <div style={{ 
+        background: 'rgba(0, 217, 255, 0.1)', 
+        border: '1px solid rgba(0, 217, 255, 0.2)', 
+        borderRadius: '8px', 
+        padding: '1rem',
+        marginTop: '1rem',
+        fontSize: '0.85rem',
+        color: 'var(--text-secondary)',
+        lineHeight: 1.6
+      }}>
+        <strong style={{ color: 'var(--accent)', display: 'block', marginBottom: '0.5rem' }}>Geçiş Anahtarları Hakkında</strong>
+        Geçiş anahtarları, parolalara göre daha güvenli bir alternatiftir. Biyometrik kimlik doğrulama veya cihaz PIN'i ile çalışırlar. Bu bilgiler sadece referans amaçlıdır; gerçek geçiş anahtarı cihazınızda saklanır.
+      </div>
+    </>
+  );
+}
+
+function AddNoteModal({ onClose, showToast }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+  const [noteTitle, setNoteTitle] = useState('');
+  const [noteContent, setNoteContent] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!noteTitle.trim() || !noteContent.trim()) {
+      showToast('Lütfen başlık ve içerik girin', 'error');
+      return;
+    }
+
+    setIsSubmitting(true);
+    try {
+      await invoke('add_password_entry', {
+        title: noteTitle.trim(),
+        username: '',
+        password: '',
+        url: null,
+        notes: noteContent.trim(),
+        category: 'notes',
+      });
+      try {
+        await invoke('log_activity', {
+          action: 'create',
+          entry_id: null,
+          details: `Not eklendi: ${noteTitle.trim()}`
+        });
+      } catch (logError) {
+        console.error('Activity log error:', logError);
+      }
+      
+      showToast('Not başarıyla eklendi', 'success');
+      setTimeout(() => {
+        onClose();
+      }, 300);
+    } catch (error) {
+      const errorStr = String(error || '');
+      let errorMessage = 'Not eklenirken hata oluştu';
+      
+      if (errorStr.includes('Kasa kilitli')) {
+        errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
+      } else if (errorStr.includes('kaydedilemedi')) {
+        errorMessage = 'Not eklendi ancak kaydedilemedi. Lütfen tekrar deneyin.';
+      } else if (errorStr.includes('Master password')) {
+        errorMessage = 'Master password bulunamadı. Lütfen kasa kilidini açın.';
+      } else if (errorStr) {
+        errorMessage = errorStr;
+      }
+      
+      showToast(errorMessage, 'error');
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <h2>Not Ekle</h2>
+      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
+      </div>
+      <div className="form-group">
+        <label>Başlık *</label>
+        <input
+          type="text"
+          value={noteTitle}
+          onChange={(e) => setNoteTitle(e.target.value)}
+          placeholder="Not başlığı"
+        />
+      </div>
+      <div className="form-group">
+        <label>İçerik *</label>
+        <textarea
+          value={noteContent}
+          onChange={(e) => setNoteContent(e.target.value)}
+          placeholder="Not içeriğinizi buraya yazın..."
+          rows={8}
+        />
+      </div>
+    </>
+  );
+}
+
+function EditEntryModal({ entry, onClose, showToast }: { entry: PasswordEntry; onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content modal-card-form" onClick={(e) => e.stopPropagation()}>
+        {entry.category === 'accounts' && <EditAccountModal entry={entry} onClose={onClose} showToast={showToast} />}
+        {entry.category === 'bank_cards' && <EditBankCardModal entry={entry} onClose={onClose} showToast={showToast} />}
+        {entry.category === 'documents' && <EditDocumentModal entry={entry} onClose={onClose} showToast={showToast} />}
+        {entry.category === 'addresses' && <EditAddressModal entry={entry} onClose={onClose} showToast={showToast} />}
+        {entry.category === 'notes' && <EditNoteModal entry={entry} onClose={onClose} showToast={showToast} />}
+        {entry.category === 'passkeys' && <EditPasskeyModal entry={entry} onClose={onClose} showToast={showToast} />}
+      </div>
+    </div>
+  );
+}
+
+function EditAccountModal({ entry, onClose, showToast }: { entry: PasswordEntry; onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+  const [title, setTitle] = useState(entry.title);
+  const [username, setUsername] = useState(entry.username);
+  const [password, setPassword] = useState(entry.password);
+  const [url, setUrl] = useState(entry.url || '');
+  const [notes, setNotes] = useState(entry.notes || '');
+
+  const generatePassword = async () => {
+    try {
+      const pwd = await invoke<string>('generate_password', {
+        length: 16,
+        includeUppercase: true,
+        includeLowercase: true,
+        includeNumbers: true,
+        includeSymbols: true,
+      });
+      setPassword(pwd);
+    } catch (error) {
+      console.error('Error generating password:', error);
+    }
+  };
+
+  const handleSubmit = async () => {
+    if (!title.trim() || !username.trim() || !password.trim()) {
+      showToast('Lütfen tüm zorunlu alanları doldurun', 'error');
+      return;
+    }
+
+    if (url.trim() && !validateUrl(url.trim())) {
+      showToast('Geçersiz URL formatı. http:// veya https:// ile başlamalı', 'error');
+      return;
+    }
+
+    try {
+      await invoke('update_password_entry', {
+        id: entry.id,
+        title: title.trim() !== entry.title ? title.trim() : null,
+        username: username.trim() !== entry.username ? username.trim() : null,
+        password: password !== entry.password ? password : null,
+        url: url.trim() !== (entry.url || '') ? (url.trim() || null) : null,
+        notes: notes.trim() !== (entry.notes || '') ? (notes.trim() || null) : null,
+        category: null,
+      });
+      
+      try {
+        await invoke('log_activity', {
+          action: 'update',
+          entry_id: entry.id,
+          details: `Hesap güncellendi: ${title.trim()}`
+        });
+      } catch (logError) {
+        console.error('Activity log error:', logError);
+      }
+      
+      showToast('Hesap başarıyla güncellendi', 'success');
+      onClose();
+    } catch (error) {
+      const errorStr = String(error || '');
+      let errorMessage = 'Güncelleme hatası';
+      
+      if (errorStr.includes('Kasa kilitli')) {
+        errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
+      } else if (errorStr.includes('kaydedilemedi')) {
+        errorMessage = 'Güncelleme yapıldı ancak kaydedilemedi. Lütfen tekrar deneyin.';
+      } else if (errorStr.includes('Master password')) {
+        errorMessage = 'Master password bulunamadı. Lütfen kasa kilidini açın.';
+      } else if (errorStr) {
+        errorMessage = errorStr;
+      }
+      
+      showToast(errorMessage, 'error');
+    }
+  };
+
+  return (
+    <>
+      <h2>Hesap Düzenle</h2>
+      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
+        <button onClick={onClose} className="cancel-button">İptal</button>
+        <button onClick={handleSubmit} className="submit-button">Güncelle</button>
+      </div>
+      <div className="form-group">
+        <label>Başlık *</label>
+        <input
+          type="text"
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          placeholder="örn: Gmail Hesabı"
+        />
+      </div>
+      <div className="form-group">
+        <label>Kullanıcı Adı *</label>
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="kullanıcı adı veya e-posta"
+        />
+      </div>
+      <div className="form-group">
+        <label>Şifre *</label>
+        <div className="password-input-group">
+          <input
+            type="text"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="şifre"
+          />
+          <button onClick={generatePassword} className="generate-btn">
+            Oluştur
+          </button>
+        </div>
+      </div>
+      <div className="form-group">
+        <label>Web Sitesi Adresi</label>
+        <input
+          type="text"
+          value={url}
+          onChange={(e) => setUrl(e.target.value)}
+          placeholder="https://example.com"
+        />
+      </div>
+      <div className="form-group">
+        <label>Notlar</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Ek notlar..."
+          rows={3}
+        />
+      </div>
+    </>
+  );
+}
+
+function EditBankCardModal({ entry, onClose, showToast }: { entry: PasswordEntry; onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+  let cardData: BankCardData = {};
+  try {
+    if (entry.notes) {
+      cardData = JSON.parse(entry.notes) as BankCardData;
+    }
+  } catch (e) {
+    cardData = {};
+  }
+
+  const [cardName, setCardName] = useState(entry.title);
+  const [cardNumber, setCardNumber] = useState(entry.username || cardData.cardNumber || '');
+  const [expiryMonth, setExpiryMonth] = useState(cardData.expiry?.split('/')[0] || '');
+  const [expiryYear, setExpiryYear] = useState(cardData.expiry?.split('/')[1] || '');
+  const [cvv, setCvv] = useState(entry.password || '');
+  const [cardholderName, setCardholderName] = useState(cardData.cardholderName || '');
+  const [cardType, setCardType] = useState(cardData.cardType || 'Visa');
+  const [cardColor, setCardColor] = useState(cardData.cardColor || '#1a1a1f');
+  const [showCardNumber, setShowCardNumber] = useState(false);
+  const [showCvv, setShowCvv] = useState(false);
+
+  const cardColors = [
+    { value: '#1a1a1f', label: 'Koyu Gri' },
+    { value: '#ff6b35', label: 'Turuncu' },
+    { value: '#4a90e2', label: 'Mavi' },
+    { value: '#f5a623', label: 'Altın' },
+    { value: '#50c878', label: 'Yeşil' },
+    { value: '#e8e8e8', label: 'Açık Gri' },
+  ];
+
+  const formatCardNumber = (value: string) => {
+    const cleaned = value.replace(/\s/g, '').replace(/\D/g, '');
+    const formatted = cleaned.match(/.{1,4}/g)?.join(' ') || cleaned;
+    return formatted.slice(0, 19);
+  };
+
+  const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const formatted = formatCardNumber(e.target.value);
+    setCardNumber(formatted);
+  };
+
+  const handleCvvChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/\D/g, '').slice(0, 4);
+    setCvv(value);
+  };
+
+  const handleSubmit = async () => {
+    if (!cardName.trim() || !cardNumber.trim() || !expiryMonth || !expiryYear || !cvv.trim() || !cardholderName.trim()) {
+      showToast('Lütfen tüm zorunlu alanları doldurun', 'error');
+      return;
+    }
+
+    if (cardNumber.replace(/\s/g, '').length < 13) {
+      showToast('Kart numarası en az 13 haneli olmalıdır', 'error');
+      return;
+    }
+
+    if (cvv.length < 3) {
+      showToast('CVV en az 3 haneli olmalıdır', 'error');
+      return;
+    }
+
+    const newCardData = {
+      cardNumber: cardNumber.replace(/\s/g, ''),
+      expiry: `${expiryMonth}/${expiryYear}`,
+      cvv,
+      cardholderName,
+      cardType,
+      cardColor,
+    };
+
+    try {
+      await invoke('update_password_entry', {
+        id: entry.id,
+        title: cardName.trim() !== entry.title ? cardName.trim() : null,
+        username: cardNumber.replace(/\s/g, '') !== entry.username ? cardNumber.replace(/\s/g, '') : null,
+        password: cvv !== entry.password ? cvv : null,
+        url: null,
+        notes: JSON.stringify(newCardData),
+        category: null,
+      });
+      
+      try {
+        await invoke('log_activity', {
+          action: 'update',
+          entry_id: entry.id,
+          details: `Banka kartı güncellendi: ${cardName.trim()}`
+        });
+      } catch (logError) {
+        console.error('Activity log error:', logError);
+      }
+      
+      showToast('Banka kartı başarıyla güncellendi', 'success');
+      onClose();
+    } catch (error) {
+      const errorStr = String(error || '');
+      let errorMessage = 'Güncelleme hatası';
+      
+      if (errorStr.includes('Kasa kilitli')) {
+        errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
+      } else if (errorStr.includes('kaydedilemedi')) {
+        errorMessage = 'Güncelleme yapıldı ancak kaydedilemedi. Lütfen tekrar deneyin.';
+      } else if (errorStr.includes('Master password')) {
+        errorMessage = 'Master password bulunamadı. Lütfen kasa kilidini açın.';
+      } else if (errorStr) {
+        errorMessage = errorStr;
+      }
+      
+      showToast(errorMessage, 'error');
+    }
+  };
+
+  return (
+    <>
+      <h2>Banka Kartı Düzenle</h2>
+      
+      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
+        <button onClick={onClose} className="cancel-button">İptal</button>
+        <button onClick={handleSubmit} className="submit-button">Güncelle</button>
+      </div>
+      
+      <div className="bank-cards-container" style={{
+        position: 'relative',
+        marginBottom: '2rem',
+        height: '420px',
+        perspective: '1200px',
+      }}>
+        <div className="bank-card-front" style={{ 
+          background: `linear-gradient(135deg, ${cardColor} 0%, ${cardColor}dd 100%)`,
+          borderRadius: '16px',
+          padding: '2rem',
+          position: 'relative',
+          width: '100%',
+          height: '380px',
+          overflow: 'visible',
+          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
+          transform: 'perspective(1000px) rotateY(0deg)',
+          transition: 'all 0.3s',
+        }}>
+          <div style={{
+            position: 'absolute',
+            top: '1rem',
+            right: '1rem',
+            fontSize: '0.75rem',
+            color: 'rgba(255, 255, 255, 0.6)',
+            fontWeight: 600,
+          }}>
+            {cardType}
+          </div>
+          
+          <div style={{
+            marginTop: '2rem',
+            marginBottom: '1rem',
+          }}>
+            <div style={{
+              fontSize: '0.7rem',
+              color: 'rgba(255, 255, 255, 0.5)',
+              marginBottom: '0.5rem',
+            }}>
+              Kart numarası
+            </div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}>
+              <input
+                type={showCardNumber ? 'text' : 'password'}
+                value={cardNumber}
+                onChange={handleCardNumberChange}
+                placeholder="1234 5678 9012 3456"
+                maxLength={19}
+                style={{
+                  flex: 1,
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  color: 'rgba(255, 255, 255, 0.95)',
+                  fontSize: '1rem',
+                  letterSpacing: '2px',
+                  fontFamily: 'monospace',
+                  fontWeight: 600,
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowCardNumber(!showCardNumber)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                {showCardNumber ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await clearClipboard(cardNumber.replace(/\s/g, ''), 60000);
+                    showToast('Kart numarası kopyalandı', 'success');
+                  } catch (error) {
+                    showToast('Kopyalama başarısız', 'error');
+                  }
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Copy size={18} />
+              </button>
+            </div>
+          </div>
+
+          <div style={{
+            display: 'flex',
+            gap: '1rem',
+            marginTop: '1.25rem',
+          }}>
+            <div style={{ flex: 1 }}>
+              <div style={{
+                fontSize: '0.7rem',
+                color: 'rgba(255, 255, 255, 0.5)',
+                marginBottom: '0.5rem',
+              }}>
+                AA
+              </div>
+              <CustomDropdown
+                value={expiryMonth || 'MM'}
+                onChange={(val) => {
+                  const month = Math.min(12, Math.max(1, parseInt(val) || 0));
+                  setExpiryMonth(month.toString().padStart(2, '0'));
+                }}
+                options={Array.from({ length: 12 }, (_, i) => ({
+                  value: (i + 1).toString().padStart(2, '0'),
+                  label: (i + 1).toString().padStart(2, '0'),
+                }))}
+              />
+            </div>
+            <div style={{ flex: 1 }}>
+              <div style={{
+                fontSize: '0.7rem',
+                color: 'rgba(255, 255, 255, 0.5)',
+                marginBottom: '0.5rem',
+              }}>
+                YYYY
+              </div>
+              <input
+                type="text"
+                value={expiryYear}
+                onChange={(e) => {
+                  const value = e.target.value.replace(/\D/g, '').slice(0, 4);
+                  setExpiryYear(value);
+                }}
+                placeholder="2025"
+                maxLength={4}
+                style={{
+                  width: '100%',
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  color: 'rgba(255, 255, 255, 0.95)',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  outline: 'none',
+                }}
+              />
+            </div>
+          </div>
+
+          <div style={{
+            marginTop: '1.25rem',
+          }}>
+            <div style={{
+              fontSize: '0.7rem',
+              color: 'rgba(255, 255, 255, 0.5)',
+              marginBottom: '0.5rem',
+            }}>
+              Kart sahibi
+            </div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}>
+              <input
+                type="text"
+                value={cardholderName}
+                onChange={(e) => setCardholderName(e.target.value.toUpperCase())}
+                placeholder="EMRE YILMAZ"
+                style={{
+                  flex: 1,
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  color: 'rgba(255, 255, 255, 0.95)',
+                  fontSize: '0.9rem',
+                  fontWeight: 600,
+                  textTransform: 'uppercase',
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await clearClipboard(cardholderName, 60000);
+                    showToast('Kart sahibi adı kopyalandı', 'success');
+                  } catch (error) {
+                    showToast('Kopyalama başarısız', 'error');
+                  }
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Copy size={18} />
+              </button>
+              <CustomDropdown
+                value={cardType}
+                onChange={setCardType}
+                options={[
+                  { value: 'Visa', label: 'Visa' },
+                  { value: 'Mastercard', label: 'Mastercard' },
+                  { value: 'American Express', label: 'American Express' },
+                  { value: 'UATP', label: 'UATP' },
+                  { value: 'Diğer', label: 'Diğer' },
+                ]}
+              />
+            </div>
+          </div>
+
+          <div style={{
+            marginTop: '1.25rem',
+          }}>
+            <div style={{
+              fontSize: '0.7rem',
+              color: 'rgba(255, 255, 255, 0.5)',
+              marginBottom: '0.5rem',
+              textTransform: 'uppercase',
+            }}>
+              CVC2/CVV2
+            </div>
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+            }}>
+              <input
+                type={showCvv ? 'text' : 'password'}
+                value={cvv}
+                onChange={handleCvvChange}
+                placeholder="123"
+                maxLength={4}
+                style={{
+                  flex: 1,
+                  background: 'rgba(0, 0, 0, 0.3)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.75rem',
+                  color: 'rgba(255, 255, 255, 0.95)',
+                  fontSize: '1.2rem',
+                  fontFamily: 'monospace',
+                  fontWeight: 700,
+                  letterSpacing: '2px',
+                  textAlign: 'center',
+                  outline: 'none',
+                }}
+              />
+              <button
+                type="button"
+                onClick={() => setShowCvv(!showCvv)}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  transition: 'all 0.2s',
+                }}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
+                }}
+              >
+                {showCvv ? <EyeOff size={18} /> : <Eye size={18} />}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  try {
+                    await clearClipboard(cvv, 30000);
+                    showToast('CVV kopyalandı (30 saniye sonra temizlenecek)', 'success');
+                  } catch (error) {
+                    showToast('Kopyalama başarısız', 'error');
+                  }
+                }}
+                style={{
+                  background: 'rgba(255, 255, 255, 0.1)',
+                  border: '1px solid rgba(255, 255, 255, 0.2)',
+                  borderRadius: '8px',
+                  padding: '0.5rem',
+                  cursor: 'pointer',
+                  color: 'rgba(255, 255, 255, 0.8)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                }}
+              >
+                <Copy size={18} />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="color-swatches" style={{
+        display: 'flex',
+        gap: '0.75rem',
+        marginBottom: '0.5rem',
+        justifyContent: 'center',
+      }}>
+        {cardColors.map((color) => (
+          <button
+            key={color.value}
+            type="button"
+            onClick={() => setCardColor(color.value)}
+            className="color-swatch"
+            style={{
+              width: '36px',
+              height: '36px',
+              borderRadius: '50%',
+              background: color.value,
+              border: cardColor === color.value ? '3px solid var(--accent)' : '2px solid var(--border)',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+              boxShadow: cardColor === color.value 
+                ? '0 4px 12px rgba(0, 217, 255, 0.4), 0 0 0 2px rgba(0, 217, 255, 0.2)' 
+                : '0 2px 8px rgba(0, 0, 0, 0.2)',
+              transform: cardColor === color.value ? 'scale(1.15)' : 'scale(1)',
+            }}
+            title={color.label}
+          />
+        ))}
+      </div>
+
+      <div className="form-group" style={{ marginTop: '0.5rem' }}>
+        <label>Kart Adı *</label>
+        <input
+          type="text"
+          value={cardName}
+          onChange={(e) => setCardName(e.target.value)}
+          placeholder="örn: Ana Kartım"
+        />
+      </div>
+    </>
+  );
+}
+
+function EditDocumentModal({ entry, onClose, showToast }: { entry: PasswordEntry; onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+  let docData: DocumentData = {};
+  let extraNotes = '';
+  try {
+    if (entry.notes) {
+      const parts = entry.notes.split('\n');
+      if (parts[0].startsWith('{')) {
+        docData = JSON.parse(parts[0]) as DocumentData;
+        extraNotes = parts.slice(1).join('\n');
+      } else {
+        extraNotes = entry.notes;
+      }
+    }
+  } catch (e) {
+    extraNotes = entry.notes || '';
+  }
+
+  const [documentName, setDocumentName] = useState(entry.title);
+  const [documentType, setDocumentType] = useState(entry.username !== 'Belge' ? entry.username : docData.documentType || '');
+  const [filePath, setFilePath] = useState(docData.filePath || '');
+  const [notes, setNotes] = useState(extraNotes);
+
+  const handleSubmit = async () => {
+    if (!documentName.trim()) {
+      showToast('Lütfen belge adını girin', 'error');
+      return;
+    }
+
+    const documentData = {
+      documentType,
+      filePath,
+    };
+
+    try {
+      await invoke('update_password_entry', {
+        id: entry.id,
+        title: documentName.trim() !== entry.title ? documentName.trim() : null,
+        username: documentType !== entry.username ? (documentType || 'Belge') : null,
+        password: null,
+        url: null,
+        notes: JSON.stringify(documentData) + (notes.trim() ? '\n' + notes.trim() : ''),
+        category: null,
+      });
+      
+      try {
+        await invoke('log_activity', {
+          action: 'update',
+          entry_id: entry.id,
+          details: `Belge güncellendi: ${documentName.trim()}`
+        });
+      } catch (logError) {
+        console.error('Activity log error:', logError);
+      }
+      
+      showToast('Belge başarıyla güncellendi', 'success');
+      onClose();
+    } catch (error) {
+      const errorStr = String(error || '');
+      let errorMessage = 'Güncelleme hatası';
+      
+      if (errorStr.includes('Kasa kilitli')) {
+        errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
+      } else if (errorStr.includes('kaydedilemedi')) {
+        errorMessage = 'Güncelleme yapıldı ancak kaydedilemedi. Lütfen tekrar deneyin.';
+      } else if (errorStr.includes('Master password')) {
+        errorMessage = 'Master password bulunamadı. Lütfen kasa kilidini açın.';
+      } else if (errorStr) {
+        errorMessage = errorStr;
+      }
+      
+      showToast(errorMessage, 'error');
+    }
+  };
+
+  return (
+    <>
+      <h2>Belge Düzenle</h2>
+      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
+        <button onClick={onClose} className="cancel-button">İptal</button>
+        <button onClick={handleSubmit} className="submit-button">Güncelle</button>
+      </div>
+      <div className="form-group">
+        <label>Belge Adı *</label>
+        <input
+          type="text"
+          value={documentName}
+          onChange={(e) => setDocumentName(e.target.value)}
+          placeholder="örn: Pasaport, Kimlik"
+        />
+      </div>
+      <div className="form-group">
+        <label>Belge Tipi</label>
+        <input
+          type="text"
+          value={documentType}
+          onChange={(e) => setDocumentType(e.target.value)}
+          placeholder="örn: Pasaport, Sürücü Belgesi"
+        />
+      </div>
+      <div className="form-group">
+        <label>Dosya Yolu</label>
+        <input
+          type="text"
+          value={filePath}
+          onChange={(e) => setFilePath(e.target.value)}
+          placeholder="C:\Users\...\belge.pdf"
+        />
+      </div>
+      <div className="form-group">
+        <label>Notlar</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Ek notlar..."
+          rows={3}
+        />
+      </div>
+    </>
+  );
+}
+
+function EditAddressModal({ entry, onClose, showToast }: { entry: PasswordEntry; onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+  let addressData: AddressData = {};
+  let extraNotes = '';
+  try {
+    if (entry.notes) {
+      const parts = entry.notes.split('\n');
+      if (parts[0].startsWith('{')) {
+        addressData = JSON.parse(parts[0]) as AddressData;
+        extraNotes = parts.slice(1).join('\n');
+      } else {
+        extraNotes = entry.notes;
+      }
+    }
+  } catch (e) {
+    extraNotes = entry.notes || '';
+  }
+
+  const [addressName, setAddressName] = useState(entry.title);
+  const [streetAddress, setStreetAddress] = useState(entry.username || addressData.street || '');
+  const [city, setCity] = useState(addressData.city || '');
+  const [state, setState] = useState(addressData.state || '');
+  const [postalCode, setPostalCode] = useState(entry.password || addressData.postalCode || '');
+  const [country, setCountry] = useState(addressData.country || 'Türkiye');
+  const [notes, setNotes] = useState(extraNotes);
+
+  const handleSubmit = async () => {
+    if (!addressName.trim() || !streetAddress.trim() || !city.trim()) {
+      showToast('Lütfen zorunlu alanları doldurun', 'error');
+      return;
+    }
+
+    const newAddressData = {
+      street: streetAddress,
+      city,
+      state,
+      postalCode,
+      country,
+    };
+
+    try {
+      await invoke('update_password_entry', {
+        id: entry.id,
+        title: addressName.trim() !== entry.title ? addressName.trim() : null,
+        username: streetAddress.trim() !== entry.username ? streetAddress.trim() : null,
+        password: postalCode !== entry.password ? postalCode : null,
+        url: null,
+        notes: JSON.stringify(newAddressData) + (notes.trim() ? '\n' + notes.trim() : ''),
+        category: null,
+      });
+      
+      try {
+        await invoke('log_activity', {
+          action: 'update',
+          entry_id: entry.id,
+          details: `Adres güncellendi: ${addressName.trim()}`
+        });
+      } catch (logError) {
+        console.error('Activity log error:', logError);
+      }
+      
+      showToast('Adres başarıyla güncellendi', 'success');
+      onClose();
+    } catch (error) {
+      const errorStr = String(error || '');
+      let errorMessage = 'Güncelleme hatası';
+      
+      if (errorStr.includes('Kasa kilitli')) {
+        errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
+      } else if (errorStr.includes('kaydedilemedi')) {
+        errorMessage = 'Güncelleme yapıldı ancak kaydedilemedi. Lütfen tekrar deneyin.';
+      } else if (errorStr.includes('Master password')) {
+        errorMessage = 'Master password bulunamadı. Lütfen kasa kilidini açın.';
+      } else if (errorStr) {
+        errorMessage = errorStr;
+      }
+      
+      showToast(errorMessage, 'error');
+    }
+  };
+
+  return (
+    <>
+      <h2>Adres Düzenle</h2>
+      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
+        <button onClick={onClose} className="cancel-button">İptal</button>
+        <button onClick={handleSubmit} className="submit-button">Güncelle</button>
+      </div>
+      <div className="form-group">
+        <label>Adres Adı *</label>
+        <input
+          type="text"
+          value={addressName}
+          onChange={(e) => setAddressName(e.target.value)}
+          placeholder="örn: Ev Adresim, İş Adresim"
+        />
+      </div>
+      <div className="form-group">
+        <label>Sokak Adresi *</label>
+        <input
+          type="text"
+          value={streetAddress}
+          onChange={(e) => setStreetAddress(e.target.value)}
+          placeholder="Sokak, cadde, mahalle"
+        />
+      </div>
+      <div className="form-row">
+        <div className="form-group" style={{ flex: 1 }}>
+          <label>Şehir *</label>
+          <input
+            type="text"
+            value={city}
+            onChange={(e) => setCity(e.target.value)}
+            placeholder="İstanbul"
+          />
+        </div>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label>İlçe/Eyalet</label>
+          <input
+            type="text"
+            value={state}
+            onChange={(e) => setState(e.target.value)}
+            placeholder="Kadıköy"
+          />
+        </div>
+      </div>
+      <div className="form-row">
+        <div className="form-group" style={{ flex: 1 }}>
+          <label>Posta Kodu</label>
+          <input
+            type="text"
+            value={postalCode}
+            onChange={(e) => setPostalCode(e.target.value)}
+            placeholder="34000"
+          />
+        </div>
+        <div className="form-group" style={{ flex: 1 }}>
+          <label>Ülke</label>
+          <input
+            type="text"
+            value={country}
+            onChange={(e) => setCountry(e.target.value)}
+            placeholder="Türkiye"
+          />
+        </div>
+      </div>
+      <div className="form-group">
+        <label>Notlar</label>
+        <textarea
+          value={notes}
+          onChange={(e) => setNotes(e.target.value)}
+          placeholder="Ek notlar..."
+          rows={3}
+        />
+      </div>
+      <div className="modal-actions">
+        <button onClick={onClose} className="cancel-button">İptal</button>
+        <button onClick={handleSubmit} className="submit-button">Güncelle</button>
+      </div>
+    </>
+  );
+}
+
+function EditPasskeyModal({ entry, onClose, showToast }: { entry: PasswordEntry; onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+  let passkeyData: PasskeyData | null = null;
+  let extraNotes = '';
+  try {
+    if (entry.notes) {
+      const parts = entry.notes.split('\n');
+      if (parts[0].startsWith('{')) {
+        passkeyData = JSON.parse(parts[0]) as PasskeyData;
+        extraNotes = parts.slice(1).join('\n');
+      } else {
+        extraNotes = entry.notes;
+      }
+    }
+  } catch (e) {
+    extraNotes = entry.notes || '';
+  }
+
+  const [serviceName, setServiceName] = useState(entry.title);
+  const [domain, setDomain] = useState(entry.url || passkeyData?.domain || '');
+  const [username, setUsername] = useState(passkeyData?.username || entry.username || '');
+  const [email, setEmail] = useState(passkeyData?.email || '');
+  const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const handleSubmit = async () => {
+    if (!serviceName.trim() || !domain.trim()) {
+      showToast('Lütfen servis adı ve domain girin', 'error');
+      return;
+    }
+
+    if (!username.trim() && !email.trim()) {
+      showToast('Lütfen kullanıcı adı veya e-posta girin', 'error');
+      return;
+    }
+
+    if (domain.trim() && !validateUrl(domain.trim()) && !domain.trim().includes('.')) {
+      showToast('Geçersiz domain formatı', 'error');
+      return;
+    }
+
+    const newPasskeyData: PasskeyData = {
+      username: username.trim() || undefined,
+      email: email.trim() || undefined,
+      domain: domain.trim(),
+    };
+
+    setIsSubmitting(true);
+    try {
+      let url = domain.trim();
+      if (!url.startsWith('http://') && !url.startsWith('https://')) {
+        url = `https://${url}`;
+      }
+
+      await invoke('update_password_entry', {
+        id: entry.id,
+        title: serviceName.trim() !== entry.title ? serviceName.trim() : null,
+        username: username.trim() || email.trim() || '',
+        password: null,
+        url: url !== entry.url ? url : null,
+        notes: JSON.stringify(newPasskeyData) + (extraNotes.trim() ? '\n' + extraNotes.trim() : ''),
+        category: null,
+      });
+      
+      try {
+        await invoke('log_activity', {
+          action: 'update',
+          entry_id: entry.id,
+          details: `Geçiş anahtarı güncellendi: ${serviceName.trim()}`
+        });
+      } catch (logError) {
+        console.error('Activity log error:', logError);
+      }
+      
+      showToast('Geçiş anahtarı başarıyla güncellendi', 'success');
+      onClose();
+    } catch (error) {
+      const errorStr = String(error || '');
+      let errorMessage = 'Güncelleme hatası';
+      
+      if (errorStr.includes('Kasa kilitli')) {
+        errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
+      } else if (errorStr.includes('kaydedilemedi')) {
+        errorMessage = 'Güncelleme yapıldı ancak kaydedilemedi. Lütfen tekrar deneyin.';
+      } else if (errorStr.includes('Master password')) {
+        errorMessage = 'Master password bulunamadı. Lütfen kasa kilidini açın.';
+      } else if (errorStr) {
+        errorMessage = errorStr;
+      }
+      
+      showToast(errorMessage, 'error');
+      setIsSubmitting(false);
+    }
+  };
+
+  return (
+    <>
+      <h2>Geçiş Anahtarı Düzenle</h2>
+      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
+      </div>
+      <div className="form-group">
+        <label>Servis Adı *</label>
+        <input
+          type="text"
+          value={serviceName}
+          onChange={(e) => setServiceName(e.target.value)}
+          placeholder="Örn: Google, GitHub, Discord"
+          disabled={isSubmitting}
+          autoFocus
+        />
+      </div>
+      <div className="form-group">
+        <label>Domain/URL *</label>
+        <input
+          type="text"
+          value={domain}
+          onChange={(e) => setDomain(e.target.value)}
+          placeholder="Örn: google.com veya https://google.com"
+          disabled={isSubmitting}
+        />
+      </div>
+      <div className="form-group">
+        <label>Kullanıcı Adı</label>
+        <input
+          type="text"
+          value={username}
+          onChange={(e) => setUsername(e.target.value)}
+          placeholder="Kullanıcı adı (opsiyonel)"
+          disabled={isSubmitting}
+        />
+      </div>
+      <div className="form-group">
+        <label>E-posta</label>
+        <input
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="E-posta adresi (opsiyonel)"
+          disabled={isSubmitting}
+        />
+      </div>
+    </>
+  );
+}
+
+function EditNoteModal({ entry, onClose, showToast }: { entry: PasswordEntry; onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+  const [noteTitle, setNoteTitle] = useState(entry.title);
+  const [noteContent, setNoteContent] = useState(entry.notes || '');
+
+  const handleSubmit = async () => {
+    if (!noteTitle.trim() || !noteContent.trim()) {
+      showToast('Lütfen başlık ve içerik girin', 'error');
+      return;
+    }
+
+    try {
+      await invoke('update_password_entry', {
+        id: entry.id,
+        title: noteTitle.trim() !== entry.title ? noteTitle.trim() : null,
+        username: null,
+        password: null,
+        url: null,
+        notes: noteContent.trim() !== (entry.notes || '') ? noteContent.trim() : null,
+        category: null,
+      });
+      
+      try {
+        await invoke('log_activity', {
+          action: 'update',
+          entry_id: entry.id,
+          details: `Not güncellendi: ${noteTitle.trim()}`
+        });
+      } catch (logError) {
+        console.error('Activity log error:', logError);
+      }
+      
+      showToast('Not başarıyla güncellendi', 'success');
+      onClose();
+    } catch (error) {
+      const errorStr = String(error || '');
+      let errorMessage = 'Güncelleme hatası';
+      
+      if (errorStr.includes('Kasa kilitli')) {
+        errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
+      } else if (errorStr.includes('kaydedilemedi')) {
+        errorMessage = 'Güncelleme yapıldı ancak kaydedilemedi. Lütfen tekrar deneyin.';
+      } else if (errorStr.includes('Master password')) {
+        errorMessage = 'Master password bulunamadı. Lütfen kasa kilidini açın.';
+      } else if (errorStr) {
+        errorMessage = errorStr;
+      }
+      
+      showToast(errorMessage, 'error');
+    }
+  };
+
+  return (
+    <>
+      <h2>Not Düzenle</h2>
+      <div className="form-group">
+        <label>Başlık *</label>
+        <input
+          type="text"
+          value={noteTitle}
+          onChange={(e) => setNoteTitle(e.target.value)}
+          placeholder="Not başlığı"
+        />
+      </div>
+      <div className="form-group">
+        <label>İçerik *</label>
+        <textarea
+          value={noteContent}
+          onChange={(e) => setNoteContent(e.target.value)}
+          placeholder="Not içeriğinizi buraya yazın..."
+          rows={8}
+        />
+      </div>
+      <div className="modal-actions">
+        <button onClick={onClose} className="cancel-button">İptal</button>
+        <button onClick={handleSubmit} className="submit-button">Güncelle</button>
+      </div>
+    </>
+  );
+}
+
+function ForgotPasswordModal({ onClose, onReset }: { onClose: () => void; onReset: () => void }) {
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+        <h2>Ana parolanızı mı unuttunuz?</h2>
+        
+        <div style={{ marginBottom: '1.5rem' }}>
+          <p style={{ color: 'var(--text-secondary)', fontSize: '0.9rem', marginBottom: '1rem' }}>
+            Eski ana parolanızı hatırlıyorsanız verileri geri yüklemek için kasanızın bir yedeğini kaydedin. Yedek oluşturmak için önce kasa kilidini açmanız gerekir.
+          </p>
+        </div>
+
+        <div style={{
+          background: 'rgba(255, 71, 87, 0.1)',
+          border: '1px solid rgba(255, 71, 87, 0.3)',
+          borderRadius: '12px',
+          padding: '1.25rem',
+          marginBottom: '1.5rem'
+        }}>
+          <div style={{ display: 'flex', alignItems: 'flex-start', gap: '0.75rem', marginBottom: '0.75rem' }}>
+            <AlertTriangle size={20} style={{ color: '#ff4757', flexShrink: 0, marginTop: '2px' }} />
+            <div>
+              <p style={{ color: '#ff4757', fontWeight: 600, margin: 0, marginBottom: '0.5rem' }}>
+                Tüm verileriniz uygulamadan silinecek.
+              </p>
+              <p style={{ color: 'var(--text-secondary)', fontSize: '0.85rem', margin: 0, lineHeight: 1.5 }}>
+                Uygulama tek bir veritabanı ile etkileşim kurmak üzere tasarlanmıştır. Yeni bir kasa oluşturursanız var olan kasa silinecektir.
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div className="modal-actions">
+          <button onClick={onClose} className="cancel-button">
+            İptal
+          </button>
+          <button 
+            onClick={onReset}
+            className="submit-button"
+            style={{ background: '#ff4757', borderColor: '#ff4757' }}
+          >
+            Yeni Kasa Oluştur
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default App;

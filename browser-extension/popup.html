@@ -1,0 +1,429 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>ConfPass</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 340px;
+      min-height: 200px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
+      background: #0f0f0f;
+      background-image:
+        radial-gradient(at 0% 0%, rgba(0, 217, 255, 0.08) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(0, 217, 255, 0.04) 0px, transparent 50%);
+      color: #ffffff;
+    }
+
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 16px;
+      background: #1a1a1a;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .logo {
+      width: 36px;
+      height: 36px;
+      background: linear-gradient(135deg, #00d9ff 0%, #00a8cc 100%);
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+    }
+
+    .logo svg {
+      width: 20px;
+      height: 20px;
+      color: white;
+    }
+
+    .header-text h1 {
+      font-size: 16px;
+      font-weight: 600;
+      color: #ffffff;
+    }
+
+    .header-text p {
+      font-size: 11px;
+      color: #707070;
+      margin-top: 2px;
+    }
+
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 16px;
+      background: #1a1a1a;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #ff4757;
+    }
+
+    .status-dot.connected {
+      background: #00d9ff;
+      box-shadow: 0 0 8px rgba(0, 217, 255, 0.5);
+    }
+
+    .status-text {
+      font-size: 12px;
+      color: #a0a0a0;
+    }
+
+    .status-text.connected {
+      color: #00d9ff;
+    }
+
+    .content {
+      padding: 16px;
+    }
+
+    .site-info {
+      background: #1a1a1a;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 10px;
+      padding: 12px;
+      margin-bottom: 16px;
+    }
+
+    .site-info-label {
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #707070;
+      margin-bottom: 4px;
+    }
+
+    .site-info-value {
+      font-size: 13px;
+      color: #ffffff;
+      word-break: break-all;
+    }
+
+    .passwords-section {
+      margin-bottom: 16px;
+    }
+
+    .section-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: #707070;
+      margin-bottom: 8px;
+    }
+
+    .password-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      max-height: 180px;
+      overflow-y: auto;
+    }
+
+    .password-item {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      background: #1a1a1a;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .password-item:hover {
+      border-color: rgba(0, 217, 255, 0.3);
+      background: rgba(0, 217, 255, 0.05);
+    }
+
+    .password-item-icon {
+      width: 32px;
+      height: 32px;
+      background: #242424;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 14px;
+      color: #00d9ff;
+      font-weight: 600;
+    }
+
+    .password-item-info {
+      flex: 1;
+      min-width: 0;
+    }
+
+    .password-item-title {
+      font-size: 13px;
+      font-weight: 500;
+      color: #ffffff;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .password-item-username {
+      font-size: 11px;
+      color: #707070;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .password-item-fill {
+      padding: 6px 10px;
+      background: linear-gradient(135deg, #00d9ff 0%, #00a8cc 100%);
+      border: none;
+      border-radius: 6px;
+      color: white;
+      font-size: 11px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .password-item-fill:hover {
+      transform: scale(1.05);
+      box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+    }
+
+    .no-passwords {
+      text-align: center;
+      padding: 24px 16px;
+      color: #707070;
+      font-size: 13px;
+    }
+
+    .no-passwords svg {
+      width: 40px;
+      height: 40px;
+      margin-bottom: 8px;
+      opacity: 0.5;
+    }
+
+    .actions {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      padding: 12px 16px;
+      border: none;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .btn svg {
+      width: 16px;
+      height: 16px;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #00d9ff 0%, #00a8cc 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+    }
+
+    .btn-primary:disabled {
+      background: #242424;
+      color: #707070;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .btn-secondary {
+      background: #1a1a1a;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      color: #ffffff;
+    }
+
+    .btn-secondary:hover {
+      border-color: rgba(0, 217, 255, 0.3);
+      background: rgba(0, 217, 255, 0.05);
+    }
+
+    .locked-message {
+      text-align: center;
+      padding: 20px;
+    }
+
+    .locked-message svg {
+      width: 48px;
+      height: 48px;
+      color: #707070;
+      margin-bottom: 12px;
+    }
+
+    .locked-message h3 {
+      font-size: 14px;
+      color: #ffffff;
+      margin-bottom: 4px;
+    }
+
+    .locked-message p {
+      font-size: 12px;
+      color: #707070;
+      margin-bottom: 16px;
+    }
+
+    .loading {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 40px;
+    }
+
+    .spinner {
+      width: 24px;
+      height: 24px;
+      border: 2px solid #242424;
+      border-top-color: #00d9ff;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    /* Scrollbar styling */
+    .password-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .password-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+
+    .password-list::-webkit-scrollbar-thumb {
+      background: #333;
+      border-radius: 3px;
+    }
+
+    .password-list::-webkit-scrollbar-thumb:hover {
+      background: #444;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div class="logo">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+    </div>
+    <div class="header-text">
+      <h1>ConfPass</h1>
+      <p>Password Manager</p>
+    </div>
+  </div>
+
+  <div class="status-bar">
+    <div id="statusDot" class="status-dot"></div>
+    <span id="statusText" class="status-text">Kontrol ediliyor...</span>
+  </div>
+
+  <div class="content">
+    <div id="loadingState" class="loading">
+      <div class="spinner"></div>
+    </div>
+
+    <div id="lockedState" class="locked-message" style="display: none;">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>
+      <h3>Kasa Kilitli</h3>
+      <p>Devam etmek icin uygulamayi acin ve kilidini acin</p>
+      <button id="openAppBtnLocked" class="btn btn-primary">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
+        </svg>
+        Uygulamayi Ac
+      </button>
+    </div>
+
+    <div id="disconnectedState" style="display: none;">
+      <div class="locked-message">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <line x1="1" y1="1" x2="23" y2="23"/>
+          <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+          <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+          <path d="M10.71 5.05A16 16 0 0 1 22.58 9"/>
+          <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+          <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+          <line x1="12" y1="20" x2="12.01" y2="20"/>
+        </svg>
+        <h3>Baglanti Yok</h3>
+        <p>ConfPass uygulamasina baglanilamiyor</p>
+        <button id="openAppBtnDisconnected" class="btn btn-primary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+          Uygulamayi Ac
+        </button>
+      </div>
+    </div>
+
+    <div id="mainContent" style="display: none;">
+      <div class="site-info">
+        <div class="site-info-label">Mevcut Site</div>
+        <div id="currentSite" class="site-info-value">-</div>
+      </div>
+
+      <div id="passwordsSection" class="passwords-section">
+        <div class="section-title">Kayitli Hesaplar</div>
+        <div id="passwordList" class="password-list"></div>
+      </div>
+
+      <div class="actions">
+        <button id="openAppBtn" class="btn btn-secondary">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+            <polyline points="15 3 21 3 21 9"/>
+            <line x1="10" y1="14" x2="21" y2="3"/>
+          </svg>
+          Uygulamayi Ac
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>
