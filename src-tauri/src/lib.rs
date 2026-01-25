@@ -416,6 +416,15 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
         drop(state);
         
         save_vault_to_disk(&state_snapshot, &master_password)?;
+
+        // [SÜPER YAMA] İlk kurulumda da şifreyi kaydet
+        #[cfg(windows)]
+        {
+            if let Ok(entry) = keyring::Entry::new("ConfPass", "master_password") {
+                let _ = entry.set_password(&master_password);
+            }
+        }
+
         master_password.zeroize();
         return Ok(true);
     }
@@ -468,6 +477,23 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
             state.last_attempt_time = None;
             
             drop(state);
+
+            // [SÜPER YAMA] Şifre doğrulandığı an Windows Kasasına yaz
+            #[cfg(windows)]
+            {
+                match keyring::Entry::new("ConfPass", "master_password") {
+                    Ok(entry) => {
+                        println!("[DEBUG] Windows Kasasına yazılıyor...");
+                        if let Err(e) = entry.set_password(&master_password) {
+                            eprintln!("[ERROR] Windows Kasasına yazılamadı: {}", e);
+                        } else {
+                            println!("[SUCCESS] Windows Kasasına yazıldı!");
+                        }
+                    },
+                    Err(e) => eprintln!("[ERROR] Keyring girişi oluşturulamadı: {}", e),
+                }
+            }
+
             {
                 let mut master_pwd = MASTER_PASSWORD.lock().unwrap();
                 *master_pwd = Some(SecurePassword::new(master_password.clone()));
@@ -1859,11 +1885,16 @@ fn generate_totp_code_internal(secret: &str) -> Result<String, String> {
     Ok(code)
 }
 
+use base32;
+use chrono;
+
 #[derive(Debug, Serialize, Deserialize)]
 struct AppSettings {
     minimize_to_tray: bool,
     auto_start: bool,
     auto_lock_timeout: u64,
+    #[serde(default)]
+    use_biometric: bool,
 }
 
 fn get_settings_path() -> Result<PathBuf, String> {
@@ -1896,6 +1927,7 @@ fn get_settings() -> Result<AppSettings, String> {
             minimize_to_tray: false,
             auto_start: false,
             auto_lock_timeout: 300,
+            use_biometric: false,
         });
     }
     
@@ -1969,6 +2001,35 @@ fn set_auto_lock_timeout(timeout: u64) -> Result<(), String> {
     
     let mut state = get_state_mut().map_err(|e| e.to_string())?;
     state.auto_lock_timeout = if timeout > 0 { Some(timeout) } else { None };
+    
+    Ok(())
+}
+
+#[tauri::command]
+fn set_use_biometric(enabled: bool) -> Result<(), String> {
+    let mut settings = get_settings()?;
+    settings.use_biometric = enabled;
+    save_settings(&settings)?;
+    
+    if enabled {
+        // If vault is already unlocked, save password to keyring immediately
+        #[cfg(windows)]
+        {
+            let master_pwd_guard = MASTER_PASSWORD.lock().map_err(|_| "Lock error")?;
+            if let Some(ref pwd) = *master_pwd_guard {
+                if let Ok(entry) = keyring::Entry::new("ConfPass", "master_password") {
+                    let _ = entry.set_password(pwd.as_str());
+                }
+            }
+        }
+    } else {
+        // Clear from keyring if disabled
+        #[cfg(windows)]
+        {
+            let entry = keyring::Entry::new("ConfPass", "master_password").map_err(|e| e.to_string())?;
+            let _ = entry.delete_password();
+        }
+    }
     
     Ok(())
 }
@@ -2381,13 +2442,72 @@ fn get_activity_log(limit: Option<usize>) -> Result<Vec<serde_json::Value>, Stri
 }
 
 #[tauri::command]
-fn check_biometric_available() -> Result<bool, String> {
-    Ok(false)
+async fn check_biometric_available() -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        use windows::Security::Credentials::UI::{UserConsentVerifier, UserConsentVerifierAvailability};
+        match UserConsentVerifier::CheckAvailabilityAsync() {
+            Ok(op) => match op.get() {
+                Ok(result) => Ok(result == UserConsentVerifierAvailability::Available),
+                Err(_) => Ok(false),
+            },
+            Err(_) => Ok(false),
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        Ok(false)
+    }
 }
 
 #[tauri::command]
-fn biometric_authenticate(_reason: String) -> Result<bool, String> {
-    Ok(false)
+async fn biometric_authenticate(reason: String) -> Result<bool, String> {
+    #[cfg(windows)]
+    {
+        use windows::Security::Credentials::UI::{UserConsentVerifier, UserConsentVerificationResult};
+        use windows::core::HSTRING;
+        
+        match UserConsentVerifier::RequestVerificationAsync(&HSTRING::from(reason)) {
+            Ok(op) => match op.get() {
+                Ok(result) => Ok(result == UserConsentVerificationResult::Verified),
+                Err(_) => Ok(false),
+            },
+            Err(_) => Ok(false),
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        let _ = reason;
+        Ok(false)
+    }
+}
+
+#[tauri::command]
+async fn unlock_vault_biometric() -> Result<bool, String> {
+    let settings = get_settings()?;
+    if !settings.use_biometric {
+        return Err("Biyometrik giriş devre dışı".to_string());
+    }
+
+    let authenticated = biometric_authenticate("Kasa kilidini açmak için kimlik doğrulaması gerekiyor".to_string()).await?;
+    if !authenticated {
+        return Err("Kimlik doğrulama başarısız".to_string());
+    }
+
+    #[cfg(windows)]
+    {
+        let entry = keyring::Entry::new("ConfPass", "master_password").map_err(|e| format!("Anahtar deposu hatası: {}", e))?;
+        let password = entry.get_password().map_err(|e| {
+            eprintln!("[Keyring Error] Şifre okunamadı: {}", e);
+            format!("Kayıtlı ana şifre bulunamadı (Hata: {}). Lütfen bir kez şifrenizle manuel giriş yapın.", e)
+        })?;
+        
+        unlock_vault(password)
+    }
+    #[cfg(not(windows))]
+    {
+        Err("Biyometrik giriş sadece Windows'ta destekleniyor".to_string())
+    }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
@@ -2440,6 +2560,8 @@ pub fn run() {
             get_activity_log,
             check_biometric_available,
             biometric_authenticate,
+            unlock_vault_biometric,
+            set_use_biometric,
             reset_vault,
             reset_vault_with_password,
         ])
@@ -2449,6 +2571,7 @@ pub fn run() {
                     minimize_to_tray: false,
                     auto_start: false,
                     auto_lock_timeout: 300,
+                    use_biometric: false,
                 });
                 
                 if settings.minimize_to_tray {

@@ -57,7 +57,7 @@ function App() {
   }, []);
 
   const { passwordSecurity } = usePasswordSecurity(entries, vaultLocked);
-  const { available: biometricAvailable, authenticate: biometricAuthenticate, checkAvailability } = useBiometric();
+  const { available: biometricAvailable, checkAvailability } = useBiometric();
   const { updateInfo } = useUpdateCheck();
 
   useEffect(() => {
@@ -151,20 +151,6 @@ function App() {
     setupPasskeyListeners().catch(console.error);
   }, [showToast]);
 
-  const handleBiometricUnlock = useCallback(async () => {
-    try {
-      const authenticated = await biometricAuthenticate('Kasa kilidini açmak için biyometrik kimlik doğrulama');
-      if (authenticated) {
-        showToast('Biyometrik kimlik doğrulama başarılı. Lütfen master şifrenizi girin.', 'info');
-      } else {
-        showToast('Biyometrik kimlik doğrulama başarısız', 'error');
-      }
-    } catch (error) {
-      console.error('Biometric unlock error:', error);
-      showToast('Biyometrik kimlik doğrulama hatası', 'error');
-    }
-  }, [biometricAuthenticate, showToast]);
-
   const loadEntries = useCallback(async () => {
     try {
       const loadedEntries = await invoke<PasswordEntry[]>('get_password_entries');
@@ -184,6 +170,23 @@ function App() {
       showToast(errorMessage, 'error');
     }
   }, [showToast]);
+
+  const handleBiometricUnlock = useCallback(async () => {
+    try {
+      const success = await invoke<boolean>('unlock_vault_biometric');
+      if (success) {
+        setVaultLocked(false);
+        setMasterPassword('');
+        setUnlockError(false);
+        await loadEntries();
+        showToast('Kasa başarıyla açıldı', 'success');
+      }
+    } catch (error) {
+      console.error('Biometric unlock error:', error);
+      const errorStr = String(error || '');
+      showToast(errorStr || 'Biyometrik kimlik doğrulama hatası', 'error');
+    }
+  }, [loadEntries, showToast]);
 
   const checkVaultStatus = useCallback(async () => {
     try {
@@ -534,8 +537,11 @@ function App() {
                 className="unlock-button"
                 style={{ 
                   marginTop: '0.75rem',
-                  background: 'var(--bg-tertiary)',
-                  border: '1px solid var(--accent)'
+                  background: 'transparent',
+                  border: '1px solid var(--accent)',
+                  color: 'var(--accent)',
+                  fontWeight: '600',
+                  boxShadow: '0 4px 15px rgba(138, 75, 243, 0.1)'
                 }}
               >
                 <Fingerprint size={20} />

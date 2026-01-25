@@ -15,6 +15,8 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
   const [minimizeToTray, setMinimizeToTray] = useState(false);
   const [autoStart, setAutoStart] = useState(false);
   const [autoLockTimeout, setAutoLockTimeout] = useState(300);
+  const [useBiometric, setUseBiometric] = useState(false);
+  const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [isTimeoutDropdownOpen, setIsTimeoutDropdownOpen] = useState(false);
   const timeoutDropdownRef = useRef<HTMLDivElement>(null);
@@ -72,14 +74,34 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
         minimize_to_tray: boolean;
         auto_start: boolean;
         auto_lock_timeout: number;
+        use_biometric: boolean;
       }>('get_settings');
       setMinimizeToTray(settings.minimize_to_tray);
       setAutoStart(settings.auto_start);
       setAutoLockTimeout(settings.auto_lock_timeout);
+      setUseBiometric(settings.use_biometric);
+      
+      const available = await invoke<boolean>('check_biometric_available');
+      console.log('Biometric availability:', available);
+      setIsBiometricAvailable(available);
     } catch (error) {
       console.error('Ayarlar yüklenemedi:', error);
     }
   }, []);
+
+  const handleUseBiometric = useCallback(async (enabled: boolean) => {
+    setIsLoading(true);
+    try {
+      await invoke('set_use_biometric', { enabled });
+      setUseBiometric(enabled);
+      showToast(enabled ? 'Windows Hello etkinleştirildi' : 'Windows Hello devre dışı bırakıldı', 'success');
+    } catch (error) {
+      showToast('Ayarlar kaydedilemedi', 'error');
+      console.error('Biometric settings error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [showToast]);
 
   const handleMinimizeToTray = useCallback(async (enabled: boolean) => {
     setIsLoading(true);
@@ -278,6 +300,27 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
                 </div>
               )}
             </div>
+          </div>
+
+          <div className="settings-item">
+            <div className="settings-item-info">
+              <h3>Windows Hello</h3>
+              <p>Kasa kilidini Windows Hello (Parmak izi, Yüz tanıma veya PIN) ile aç</p>
+              {!isBiometricAvailable && (
+                <span style={{ fontSize: '0.75rem', color: '#ef4444' }}>
+                  Sisteminizde Windows Hello mevcut değil veya yapılandırılmamış
+                </span>
+              )}
+            </div>
+            <label className={`toggle-switch ${!isBiometricAvailable ? 'disabled' : ''}`}>
+              <input
+                type="checkbox"
+                checked={useBiometric}
+                onChange={(e) => handleUseBiometric(e.target.checked)}
+                disabled={isLoading || !isBiometricAvailable}
+              />
+              <span className="toggle-slider"></span>
+            </label>
           </div>
         </div>
 
