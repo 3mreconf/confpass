@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
-import { Lock, Unlock, Plus, Search, Key, Shield, Settings as SettingsIcon, Home, CheckCircle, XCircle, Info, AlertCircle, ChevronDown, Minus, Maximize2, X, Grid3x3, Star, Download, HelpCircle, List, LayoutGrid, AlertTriangle, Eye, EyeOff, Copy, Clock, KeyRound, Fingerprint } from 'lucide-react';
+import { Lock, Unlock, Plus, Search, Key, Shield, Settings as SettingsIcon, Home, CheckCircle, XCircle, Info, AlertCircle, ChevronDown, Minus, Maximize2, X, Grid3x3, Star, Download, HelpCircle, AlertTriangle, Eye, EyeOff, Copy, Clock, KeyRound, Fingerprint } from 'lucide-react';
 import { CATEGORY_NAMES, CATEGORY_OPTIONS, DEBOUNCE_DELAY, AUTO_LOCK_TIMEOUT, TOAST_DURATION } from './constants';
 import { clearClipboard, validateUrl } from './utils';
 import type { PasswordEntry, ToastMessage, ConfirmDialog, BankCardData, DocumentData, AddressData, PasskeyData } from './types';
@@ -47,8 +47,7 @@ function App() {
   const [currentPage, setCurrentPage] = useState<'home' | 'settings' | 'password-check' | 'authenticator' | 'passkeys'>('home');
   const [showAddAuthenticator, setShowAddAuthenticator] = useState(false);
   const [showAddPasskey, setShowAddPasskey] = useState(false);
-  const [layoutMode, setLayoutMode] = useState<'grid' | 'list'>('grid');
-  const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
+    const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   const [detectedPasskey, setDetectedPasskey] = useState<{ rpId: string; userName: string; userDisplayName: string } | null>(null);
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
@@ -906,22 +905,6 @@ function App() {
                 <Star size={18} />
               </button>
             </div>
-            <div className="layout-toggle">
-              <button 
-                className={`layout-option ${layoutMode === 'grid' ? 'active' : ''}`}
-                onClick={() => setLayoutMode('grid')}
-                title="Grid Görünüm"
-              >
-                <LayoutGrid size={18} />
-              </button>
-              <button 
-                className={`layout-option ${layoutMode === 'list' ? 'active' : ''}`}
-                onClick={() => setLayoutMode('list')}
-                title="Liste Görünüm"
-              >
-                <List size={18} />
-              </button>
-            </div>
             <div className="search-container-main">
               <Search size={18} />
               <input
@@ -942,7 +925,7 @@ function App() {
             setShowAddDropdown(false);
           }
         }}>
-          <div className={`entries-grid ${layoutMode === 'list' ? 'list-view' : ''}`}>
+          <div className="entries-grid">
             {filteredEntries.length === 0 ? (
               <div className="empty-state">
                 <Key size={64} />
@@ -1365,12 +1348,6 @@ function AddAccountModal({ onClose, showToast }: { onClose: () => void; showToas
   return (
     <>
       <h2>Yeni Hesap Ekle</h2>
-      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
-        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
-        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
-          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
-        </button>
-      </div>
       <div className="form-group">
         <label>Başlık *</label>
         <input
@@ -1420,6 +1397,12 @@ function AddAccountModal({ onClose, showToast }: { onClose: () => void; showToas
           placeholder="Ek notlar..."
           rows={3}
         />
+      </div>
+      <div className="modal-actions">
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
       </div>
     </>
   );
@@ -1524,14 +1507,7 @@ function AddBankCardModal({ onClose, showToast }: { onClose: () => void; showToa
   return (
     <>
       <h2>Banka Kartı Ekle</h2>
-      
-      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
-        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
-        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
-          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
-        </button>
-      </div>
-      
+
       <div className="bank-cards-container" style={{
         position: 'relative',
         marginBottom: '2rem',
@@ -1868,6 +1844,12 @@ function AddBankCardModal({ onClose, showToast }: { onClose: () => void; showToa
           placeholder="örn: Ana Kartım"
         />
       </div>
+      <div className="modal-actions">
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
+      </div>
     </>
   );
 }
@@ -1937,12 +1919,6 @@ function AddDocumentModal({ onClose, showToast }: { onClose: () => void; showToa
   return (
     <>
       <h2>Belge Ekle</h2>
-      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
-        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
-        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
-          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
-        </button>
-      </div>
       <div className="form-group">
         <label>Belge Adı *</label>
         <input
@@ -1979,6 +1955,12 @@ function AddDocumentModal({ onClose, showToast }: { onClose: () => void; showToa
           rows={3}
         />
       </div>
+      <div className="modal-actions">
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
+      </div>
     </>
   );
 }
@@ -2012,7 +1994,7 @@ function AddAddressModal({ onClose, showToast }: { onClose: () => void; showToas
       await invoke('add_password_entry', {
         title: addressName.trim(),
         username: streetAddress.trim(),
-        password: postalCode,
+        password: '',
         url: null,
         notes: JSON.stringify(addressData) + (notes.trim() ? '\n' + notes.trim() : ''),
         category: 'addresses',
@@ -2054,12 +2036,6 @@ function AddAddressModal({ onClose, showToast }: { onClose: () => void; showToas
   return (
     <>
       <h2>Adres Ekle</h2>
-      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
-        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
-        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
-          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
-        </button>
-      </div>
       <div className="form-group">
         <label>Adres Adı *</label>
         <input
@@ -2126,6 +2102,12 @@ function AddAddressModal({ onClose, showToast }: { onClose: () => void; showToas
           placeholder="Ek notlar..."
           rows={3}
         />
+      </div>
+      <div className="modal-actions">
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
       </div>
     </>
   );
@@ -2212,12 +2194,6 @@ function AddPasskeyModal({ onClose, showToast }: { onClose: () => void; showToas
   return (
     <>
       <h2>Geçiş Anahtarı Ekle</h2>
-      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
-        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
-        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
-          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
-        </button>
-      </div>
       <div className="form-group">
         <label>Servis Adı *</label>
         <input
@@ -2259,10 +2235,10 @@ function AddPasskeyModal({ onClose, showToast }: { onClose: () => void; showToas
           disabled={isSubmitting}
         />
       </div>
-      <div style={{ 
-        background: 'rgba(0, 217, 255, 0.1)', 
-        border: '1px solid rgba(0, 217, 255, 0.2)', 
-        borderRadius: '8px', 
+      <div style={{
+        background: 'rgba(0, 217, 255, 0.1)',
+        border: '1px solid rgba(0, 217, 255, 0.2)',
+        borderRadius: '8px',
         padding: '1rem',
         marginTop: '1rem',
         fontSize: '0.85rem',
@@ -2271,6 +2247,12 @@ function AddPasskeyModal({ onClose, showToast }: { onClose: () => void; showToas
       }}>
         <strong style={{ color: 'var(--accent)', display: 'block', marginBottom: '0.5rem' }}>Geçiş Anahtarları Hakkında</strong>
         Geçiş anahtarları, parolalara göre daha güvenli bir alternatiftir. Biyometrik kimlik doğrulama veya cihaz PIN'i ile çalışırlar. Bu bilgiler sadece referans amaçlıdır; gerçek geçiş anahtarı cihazınızda saklanır.
+      </div>
+      <div className="modal-actions">
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
       </div>
     </>
   );
@@ -2333,12 +2315,6 @@ function AddNoteModal({ onClose, showToast }: { onClose: () => void; showToast: 
   return (
     <>
       <h2>Not Ekle</h2>
-      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
-        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
-        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
-          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
-        </button>
-      </div>
       <div className="form-group">
         <label>Başlık *</label>
         <input
@@ -2356,6 +2332,12 @@ function AddNoteModal({ onClose, showToast }: { onClose: () => void; showToast: 
           placeholder="Not içeriğinizi buraya yazın..."
           rows={8}
         />
+      </div>
+      <div className="modal-actions">
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
       </div>
     </>
   );
@@ -2454,10 +2436,6 @@ function EditAccountModal({ entry, onClose, showToast }: { entry: PasswordEntry;
   return (
     <>
       <h2>Hesap Düzenle</h2>
-      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
-        <button onClick={onClose} className="cancel-button">İptal</button>
-        <button onClick={handleSubmit} className="submit-button">Güncelle</button>
-      </div>
       <div className="form-group">
         <label>Başlık *</label>
         <input
@@ -2507,6 +2485,10 @@ function EditAccountModal({ entry, onClose, showToast }: { entry: PasswordEntry;
           placeholder="Ek notlar..."
           rows={3}
         />
+      </div>
+      <div className="modal-actions">
+        <button onClick={onClose} className="cancel-button">İptal</button>
+        <button onClick={handleSubmit} className="submit-button">Güncelle</button>
       </div>
     </>
   );
@@ -2616,12 +2598,7 @@ function EditBankCardModal({ entry, onClose, showToast }: { entry: PasswordEntry
   return (
     <>
       <h2>Banka Kartı Düzenle</h2>
-      
-      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
-        <button onClick={onClose} className="cancel-button">İptal</button>
-        <button onClick={handleSubmit} className="submit-button">Güncelle</button>
-      </div>
-      
+
       <div className="bank-cards-container" style={{
         position: 'relative',
         marginBottom: '2rem',
@@ -2958,6 +2935,10 @@ function EditBankCardModal({ entry, onClose, showToast }: { entry: PasswordEntry
           placeholder="örn: Ana Kartım"
         />
       </div>
+      <div className="modal-actions">
+        <button onClick={onClose} className="cancel-button">İptal</button>
+        <button onClick={handleSubmit} className="submit-button">Güncelle</button>
+      </div>
     </>
   );
 }
@@ -3039,10 +3020,6 @@ function EditDocumentModal({ entry, onClose, showToast }: { entry: PasswordEntry
   return (
     <>
       <h2>Belge Düzenle</h2>
-      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
-        <button onClick={onClose} className="cancel-button">İptal</button>
-        <button onClick={handleSubmit} className="submit-button">Güncelle</button>
-      </div>
       <div className="form-group">
         <label>Belge Adı *</label>
         <input
@@ -3078,6 +3055,10 @@ function EditDocumentModal({ entry, onClose, showToast }: { entry: PasswordEntry
           placeholder="Ek notlar..."
           rows={3}
         />
+      </div>
+      <div className="modal-actions">
+        <button onClick={onClose} className="cancel-button">İptal</button>
+        <button onClick={handleSubmit} className="submit-button">Güncelle</button>
       </div>
     </>
   );
@@ -3127,7 +3108,7 @@ function EditAddressModal({ entry, onClose, showToast }: { entry: PasswordEntry;
         id: entry.id,
         title: addressName.trim() !== entry.title ? addressName.trim() : null,
         username: streetAddress.trim() !== entry.username ? streetAddress.trim() : null,
-        password: postalCode !== entry.password ? postalCode : null,
+        password: '',
         url: null,
         notes: JSON.stringify(newAddressData) + (notes.trim() ? '\n' + notes.trim() : ''),
         category: null,
@@ -3166,10 +3147,6 @@ function EditAddressModal({ entry, onClose, showToast }: { entry: PasswordEntry;
   return (
     <>
       <h2>Adres Düzenle</h2>
-      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
-        <button onClick={onClose} className="cancel-button">İptal</button>
-        <button onClick={handleSubmit} className="submit-button">Güncelle</button>
-      </div>
       <div className="form-group">
         <label>Adres Adı *</label>
         <input
@@ -3341,12 +3318,6 @@ function EditPasskeyModal({ entry, onClose, showToast }: { entry: PasswordEntry;
   return (
     <>
       <h2>Geçiş Anahtarı Düzenle</h2>
-      <div className="modal-actions" style={{ marginBottom: '2rem' }}>
-        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
-        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
-          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
-        </button>
-      </div>
       <div className="form-group">
         <label>Servis Adı *</label>
         <input
@@ -3387,6 +3358,12 @@ function EditPasskeyModal({ entry, onClose, showToast }: { entry: PasswordEntry;
           placeholder="E-posta adresi (opsiyonel)"
           disabled={isSubmitting}
         />
+      </div>
+      <div className="modal-actions">
+        <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
+        <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
+          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+        </button>
       </div>
     </>
   );

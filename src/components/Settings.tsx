@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
 import { ArrowLeft, Power, Lock, Download, Upload, Info, ChevronDown, CheckCircle, RefreshCw, ExternalLink, AlertTriangle, Trash2 } from 'lucide-react';
+import { listen } from '@tauri-apps/api/event';
 import packageJson from '../../package.json';
 import './Settings.css';
 
@@ -17,6 +18,9 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
   const [autoLockTimeout, setAutoLockTimeout] = useState(300);
   const [useBiometric, setUseBiometric] = useState(false);
   const [isBiometricAvailable, setIsBiometricAvailable] = useState(false);
+  const [streamProtection, setStreamProtection] = useState(false);
+  const [streamingDetected, setStreamingDetected] = useState(false);
+  const [detectedApps, setDetectedApps] = useState<string[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [isTimeoutDropdownOpen, setIsTimeoutDropdownOpen] = useState(false);
   const timeoutDropdownRef = useRef<HTMLDivElement>(null);
@@ -40,6 +44,21 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
   useEffect(() => {
     loadSettings();
     checkForUpdates();
+    loadStreamProtectionStatus();
+
+    // Stream protection event listener
+    const unlisten = listen<{
+      streaming_detected: boolean;
+      protected: boolean;
+      detected_apps: string[];
+    }>('stream-protection-changed', (event) => {
+      setStreamingDetected(event.payload.streaming_detected);
+      setDetectedApps(event.payload.detected_apps);
+    });
+
+    return () => {
+      unlisten.then(fn => fn());
+    };
   }, []);
 
   const checkForUpdates = useCallback(async () => {
@@ -75,12 +94,14 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
         auto_start: boolean;
         auto_lock_timeout: number;
         use_biometric: boolean;
+        stream_protection: boolean;
       }>('get_settings');
       setMinimizeToTray(settings.minimize_to_tray);
       setAutoStart(settings.auto_start);
       setAutoLockTimeout(settings.auto_lock_timeout);
       setUseBiometric(settings.use_biometric);
-      
+      setStreamProtection(settings.stream_protection);
+
       const available = await invoke<boolean>('check_biometric_available');
       console.log('Biometric availability:', available);
       setIsBiometricAvailable(available);
@@ -102,6 +123,43 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
       setIsLoading(false);
     }
   }, [showToast]);
+
+  const loadStreamProtectionStatus = useCallback(async () => {
+    try {
+      const status = await invoke<{
+        enabled: boolean;
+        streaming_detected: boolean;
+        protected: boolean;
+        detected_apps: string[];
+      }>('get_stream_protection_status');
+      setStreamProtection(status.enabled);
+      setStreamingDetected(status.streaming_detected);
+      setDetectedApps(status.detected_apps);
+    } catch (error) {
+      console.error('Stream protection durumu yüklenemedi:', error);
+    }
+  }, []);
+
+  const handleStreamProtection = useCallback(async (enabled: boolean) => {
+    setIsLoading(true);
+    try {
+      await invoke('set_stream_protection', { enabled });
+      setStreamProtection(enabled);
+      showToast(
+        enabled
+          ? 'Yayın koruması etkinleştirildi - Ekran paylaşımında görünmez olacak'
+          : 'Yayın koruması devre dışı bırakıldı',
+        'success'
+      );
+      // Refresh status
+      await loadStreamProtectionStatus();
+    } catch (error) {
+      showToast('Ayarlar kaydedilemedi', 'error');
+      console.error('Stream protection error:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [showToast, loadStreamProtectionStatus]);
 
   const handleMinimizeToTray = useCallback(async (enabled: boolean) => {
     setIsLoading(true);
@@ -162,17 +220,76 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
     }
   }, [showToast]);
 
+  const parseTxtVaultData = (text: string) => {
+    const entries: any[] = [];
+    const blocks = text.split('---');
+    
+    for (const block of blocks) {
+      const lines = block.split('\n').map(l => l.trim()).filter(l => l.length > 0);
+      if (lines.length === 0) continue;
+
+      const entry: any = {
+        id: `entry_${crypto.randomUUID()}`,
+        created_at: Math.floor(Date.now() / 1000),
+        updated_at: Math.floor(Date.now() / 1000),
+        category: 'accounts',
+        title: '',
+        username: '',
+        password: '',
+      };
+
+      let hasData = false;
+
+      for (const line of lines) {
+        if (line.startsWith('Website name:')) {
+          entry.title = line.substring('Website name:'.length).trim();
+          hasData = true;
+        } else if (line.startsWith('Website URL:')) {
+          const url = line.substring('Website URL:'.length).trim();
+          if (url) entry.url = url;
+        } else if (line.startsWith('Login:')) {
+          entry.username = line.substring('Login:'.length).trim();
+          hasData = true;
+        } else if (line.startsWith('Password:')) {
+          entry.password = line.substring('Password:'.length).trim();
+          hasData = true;
+        } else if (line.startsWith('Comment:')) {
+          const notes = line.substring('Comment:'.length).trim();
+          if (notes) entry.notes = notes;
+        }
+      }
+
+      if (hasData && entry.title && entry.password) {
+        entries.push(entry);
+      }
+    }
+    return entries;
+  };
+
   const handleImport = useCallback(() => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json';
+    input.accept = '.json,.txt';
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
       
       try {
         const text = await file.text();
-        const count = await invoke<number>('import_vault', { jsonData: text });
+        let jsonData: string;
+
+        if (file.name.toLowerCase().endsWith('.txt')) {
+          const entries = parseTxtVaultData(text);
+          if (entries.length === 0) {
+            showToast('Geçerli bir veri bulunamadı veya format yanlış', 'error');
+            return;
+          }
+          jsonData = JSON.stringify({ entries });
+        } else {
+          jsonData = text;
+        }
+
+        const count = await invoke<number>('import_vault', { jsonData });
         showToast(`${count} kayıt başarıyla içe aktarıldı`, 'success');
       } catch (error) {
         const errorStr = String(error || '');
@@ -322,6 +439,43 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
               <span className="toggle-slider"></span>
             </label>
           </div>
+
+          <div className="settings-item">
+            <div className="settings-item-info">
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                <h3 style={{ margin: 0 }}>Yayın Koruması</h3>
+                {streamingDetected && streamProtection && (
+                  <span style={{
+                    fontSize: '0.65rem',
+                    padding: '0.2rem 0.5rem',
+                    background: 'rgba(34, 197, 94, 0.15)',
+                    color: '#22c55e',
+                    borderRadius: '9999px',
+                    fontWeight: 600,
+                    letterSpacing: '0.02em',
+                    lineHeight: 1
+                  }}>
+                    Koruma Aktif
+                  </span>
+                )}
+              </div>
+              <p style={{ marginTop: '0.25rem' }}>Discord, OBS, Zoom gibi uygulamalarda ekran paylaşırken pencereyi gizle</p>
+              {streamingDetected && detectedApps.length > 0 && (
+                <span style={{ fontSize: '0.75rem', color: 'var(--accent)' }}>
+                  Algılanan: {detectedApps.join(', ')}
+                </span>
+              )}
+            </div>
+            <label className="toggle-switch">
+              <input
+                type="checkbox"
+                checked={streamProtection}
+                onChange={(e) => handleStreamProtection(e.target.checked)}
+                disabled={isLoading}
+              />
+              <span className="toggle-slider"></span>
+            </label>
+          </div>
         </div>
 
         <div className="settings-section">
@@ -344,7 +498,7 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
           <div className="settings-item">
             <div className="settings-item-info">
               <h3>Kasayı İçe Aktar</h3>
-              <p>JSON dosyasından şifrelerinizi içe aktarın</p>
+              <p>JSON veya TXT dosyasından şifrelerinizi içe aktarın</p>
             </div>
             <button className="settings-action-button" onClick={handleImport}>
               <Upload size={18} />
@@ -429,7 +583,7 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
           
           <div className="settings-info-item" style={{ marginTop: '1rem' }}>
             <span className="settings-info-label">Geliştirici:</span>
-            <span className="settings-info-value">emreconf</span>
+            <span className="settings-info-value">3mreconf</span>
           </div>
           
           <div className="settings-info-item">

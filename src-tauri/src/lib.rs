@@ -1895,6 +1895,8 @@ struct AppSettings {
     auto_lock_timeout: u64,
     #[serde(default)]
     use_biometric: bool,
+    #[serde(default)]
+    stream_protection: bool,
 }
 
 fn get_settings_path() -> Result<PathBuf, String> {
@@ -1928,6 +1930,7 @@ fn get_settings() -> Result<AppSettings, String> {
             auto_start: false,
             auto_lock_timeout: 300,
             use_biometric: false,
+            stream_protection: false,
         });
     }
     
@@ -2030,8 +2033,256 @@ fn set_use_biometric(enabled: bool) -> Result<(), String> {
             let _ = entry.delete_password();
         }
     }
-    
+
     Ok(())
+}
+
+// ============================================================================
+// STREAM PROTECTION (Yayın/Ekran Paylaşımı Koruması)
+// ============================================================================
+
+// Global state for stream protection
+static STREAM_PROTECTION_ACTIVE: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
+static STREAMING_DETECTED: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
+
+// Yayın/ekran paylaşımı yapan uygulamaları algıla
+#[cfg(windows)]
+fn detect_streaming_apps() -> Vec<String> {
+    use windows::Win32::System::ProcessStatus::{EnumProcesses, GetModuleBaseNameW};
+    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
+    use windows::Win32::Foundation::CloseHandle;
+
+    let streaming_apps = [
+        "obs64.exe", "obs32.exe", "obs.exe",
+        "streamlabs obs.exe", "slobs.exe",
+        "discord.exe",
+        "xsplit.exe", "xsplit.broadcaster.exe", "xsplit.gamecaster.exe",
+        "nvidia share.exe", "nvcontainer.exe",
+        "gamebar.exe", "gamebarpresencewriter.exe",
+        "zoom.exe",
+        "teams.exe", "ms-teams.exe",
+        "skype.exe",
+        "webex.exe",
+        "googlemeetpwa.exe",
+        "streamelements obs live.exe",
+        "twitch studio.exe", "twitchstudio.exe",
+        "wirecast.exe",
+        "vmix64.exe", "vmix.exe",
+        "screenpal.exe", "screencastify.exe",
+        "loom.exe",
+        "bandicam.exe",
+        "camtasia.exe",
+        "anydesk.exe",
+        "teamviewer.exe",
+        "rustdesk.exe",
+        "parsec.exe",
+    ];
+
+    let mut detected = Vec::new();
+    let mut processes: [u32; 2048] = [0; 2048];
+    let mut bytes_returned: u32 = 0;
+
+    unsafe {
+        if EnumProcesses(
+            processes.as_mut_ptr(),
+            (processes.len() * std::mem::size_of::<u32>()) as u32,
+            &mut bytes_returned,
+        ).is_ok() {
+            let num_processes = bytes_returned as usize / std::mem::size_of::<u32>();
+
+            for &pid in &processes[..num_processes] {
+                if pid == 0 {
+                    continue;
+                }
+
+                if let Ok(handle) = OpenProcess(
+                    PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+                    false,
+                    pid,
+                ) {
+                    let mut name_buf: [u16; 260] = [0; 260];
+                    let len = GetModuleBaseNameW(handle, None, &mut name_buf);
+                    let _ = CloseHandle(handle);
+
+                    if len > 0 {
+                        let name = String::from_utf16_lossy(&name_buf[..len as usize]).to_lowercase();
+
+                        for app in &streaming_apps {
+                            if name == *app || name.contains(&app.replace(".exe", "")) {
+                                if !detected.contains(&name) {
+                                    detected.push(name.clone());
+                                }
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    detected
+}
+
+#[cfg(not(windows))]
+fn detect_streaming_apps() -> Vec<String> {
+    Vec::new()
+}
+
+// Pencereyi ekran yakalamasından gizle (SetWindowDisplayAffinity)
+#[cfg(windows)]
+fn set_window_capture_protection(hwnd: isize, protect: bool) -> Result<(), String> {
+    use windows::Win32::UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE};
+    use windows::Win32::Foundation::HWND;
+
+    let affinity = if protect {
+        WDA_EXCLUDEFROMCAPTURE
+    } else {
+        WDA_NONE
+    };
+
+    unsafe {
+        SetWindowDisplayAffinity(HWND(hwnd as *mut std::ffi::c_void), affinity)
+            .map_err(|e| format!("SetWindowDisplayAffinity hatası: {}", e))?;
+    }
+
+    Ok(())
+}
+
+#[cfg(not(windows))]
+fn set_window_capture_protection(_hwnd: isize, _protect: bool) -> Result<(), String> {
+    Err("Stream protection sadece Windows'ta destekleniyor".to_string())
+}
+
+#[tauri::command]
+fn set_stream_protection(enabled: bool, window: tauri::Window) -> Result<(), String> {
+    let mut settings = get_settings()?;
+    settings.stream_protection = enabled;
+    save_settings(&settings)?;
+
+    // Update global state
+    if let Ok(mut active) = STREAM_PROTECTION_ACTIVE.lock() {
+        *active = enabled;
+    }
+
+    #[cfg(windows)]
+    {
+        if let Ok(hwnd) = window.hwnd() {
+            let hwnd_value = hwnd.0 as isize;
+
+            if enabled {
+                // Check if streaming apps are running
+                let streaming_apps = detect_streaming_apps();
+                if !streaming_apps.is_empty() {
+                    set_window_capture_protection(hwnd_value, true)?;
+                    if let Ok(mut detected) = STREAMING_DETECTED.lock() {
+                        *detected = true;
+                    }
+                }
+            } else {
+                // Disable protection
+                set_window_capture_protection(hwnd_value, false)?;
+                if let Ok(mut detected) = STREAMING_DETECTED.lock() {
+                    *detected = false;
+                }
+            }
+        }
+    }
+
+    Ok(())
+}
+
+#[tauri::command]
+fn get_stream_protection_status() -> Result<serde_json::Value, String> {
+    let settings = get_settings()?;
+    let streaming_apps = detect_streaming_apps();
+
+    let is_streaming = !streaming_apps.is_empty();
+    let is_protected = STREAMING_DETECTED.lock()
+        .map(|d| *d)
+        .unwrap_or(false);
+
+    Ok(serde_json::json!({
+        "enabled": settings.stream_protection,
+        "streaming_detected": is_streaming,
+        "protected": is_protected,
+        "detected_apps": streaming_apps
+    }))
+}
+
+#[tauri::command]
+fn check_streaming_apps() -> Result<Vec<String>, String> {
+    Ok(detect_streaming_apps())
+}
+
+// Stream monitoring thread'i başlat
+fn start_stream_monitor(app_handle: tauri::AppHandle) {
+    std::thread::spawn(move || {
+        use tauri::Manager;
+        use tauri::Emitter;
+
+        let mut last_streaming_state = false;
+
+        loop {
+            std::thread::sleep(std::time::Duration::from_secs(2));
+
+            // Check if stream protection is enabled
+            let protection_enabled = STREAM_PROTECTION_ACTIVE.lock()
+                .map(|a| *a)
+                .unwrap_or(false);
+
+            if !protection_enabled {
+                // If protection was active but now disabled, remove protection
+                if last_streaming_state {
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        #[cfg(windows)]
+                        {
+                            if let Ok(hwnd) = window.hwnd() {
+                                let _ = set_window_capture_protection(hwnd.0 as isize, false);
+                            }
+                        }
+                    }
+                    last_streaming_state = false;
+                    if let Ok(mut detected) = STREAMING_DETECTED.lock() {
+                        *detected = false;
+                    }
+                }
+                continue;
+            }
+
+            let streaming_apps = detect_streaming_apps();
+            let is_streaming = !streaming_apps.is_empty();
+
+            if is_streaming != last_streaming_state {
+                last_streaming_state = is_streaming;
+
+                if let Some(window) = app_handle.get_webview_window("main") {
+                    #[cfg(windows)]
+                    {
+                        if let Ok(hwnd) = window.hwnd() {
+                            let _ = set_window_capture_protection(hwnd.0 as isize, is_streaming);
+                        }
+                    }
+
+                    if let Ok(mut detected) = STREAMING_DETECTED.lock() {
+                        *detected = is_streaming;
+                    }
+
+                    // Emit event to frontend
+                    let _ = window.emit("stream-protection-changed", serde_json::json!({
+                        "streaming_detected": is_streaming,
+                        "protected": is_streaming,
+                        "detected_apps": streaming_apps
+                    }));
+
+                    eprintln!("[Stream Protection] Streaming {} - Apps: {:?}",
+                        if is_streaming { "detected" } else { "stopped" },
+                        streaming_apps
+                    );
+                }
+            }
+        }
+    });
 }
 
 #[tauri::command]
@@ -2461,35 +2712,51 @@ async fn check_biometric_available() -> Result<bool, String> {
 }
 
 #[tauri::command]
-async fn biometric_authenticate(reason: String) -> Result<bool, String> {
+async fn biometric_authenticate(reason: String, window: tauri::Window) -> Result<bool, String> {
     #[cfg(windows)]
     {
         use windows::Security::Credentials::UI::{UserConsentVerifier, UserConsentVerificationResult};
         use windows::core::HSTRING;
-        
-        match UserConsentVerifier::RequestVerificationAsync(&HSTRING::from(reason)) {
+
+        // Minimize the window so Windows Hello appears in front
+        let was_visible = window.is_visible().unwrap_or(true);
+        let _ = window.minimize();
+
+        // Small delay to ensure window is minimized
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+
+        let result = match UserConsentVerifier::RequestVerificationAsync(&HSTRING::from(reason)) {
             Ok(op) => match op.get() {
                 Ok(result) => Ok(result == UserConsentVerificationResult::Verified),
                 Err(_) => Ok(false),
             },
             Err(_) => Ok(false),
+        };
+
+        // Restore the window after authentication
+        if was_visible {
+            let _ = window.unminimize();
+            let _ = window.set_focus();
         }
+
+        result
     }
     #[cfg(not(windows))]
     {
         let _ = reason;
+        let _ = window;
         Ok(false)
     }
 }
 
 #[tauri::command]
-async fn unlock_vault_biometric() -> Result<bool, String> {
+async fn unlock_vault_biometric(window: tauri::Window) -> Result<bool, String> {
     let settings = get_settings()?;
     if !settings.use_biometric {
         return Err("Biyometrik giriş devre dışı".to_string());
     }
 
-    let authenticated = biometric_authenticate("Kasa kilidini açmak için kimlik doğrulaması gerekiyor".to_string()).await?;
+    let authenticated = biometric_authenticate("Kasa kilidini açmak için kimlik doğrulaması gerekiyor".to_string(), window).await?;
     if !authenticated {
         return Err("Kimlik doğrulama başarısız".to_string());
     }
@@ -2564,6 +2831,9 @@ pub fn run() {
             set_use_biometric,
             reset_vault,
             reset_vault_with_password,
+            set_stream_protection,
+            get_stream_protection_status,
+            check_streaming_apps,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -2572,6 +2842,7 @@ pub fn run() {
                     auto_start: false,
                     auto_lock_timeout: 300,
                     use_biometric: false,
+                    stream_protection: false,
                 });
                 
                 if settings.minimize_to_tray {
@@ -2666,6 +2937,18 @@ pub fn run() {
 
             // Passkey detection is now handled via browser extension + HTTP API
             // No need for registry polling anymore
+
+            // Stream protection monitor başlat
+            let app_handle_for_stream = app.handle().clone();
+            if let Ok(settings) = get_settings() {
+                if settings.stream_protection {
+                    if let Ok(mut active) = STREAM_PROTECTION_ACTIVE.lock() {
+                        *active = true;
+                    }
+                }
+            }
+            start_stream_monitor(app_handle_for_stream);
+            eprintln!("[App Setup] Stream protection monitor started");
 
             Ok(())
         })

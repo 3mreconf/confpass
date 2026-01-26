@@ -1,224 +1,72 @@
-const HTTP_SERVER = 'http://127.0.0.1:1421';
+const NATIVE_HOST = 'com.emreconf.confpass';
 
-async function checkServerConnection() {
-  try {
-    const response = await fetch(`${HTTP_SERVER}/ping`);
-    return response.ok;
-  } catch (error) {
-    return false;
-  }
-}
-
-async function sendPasskeyToServer(passkeyData) {
-  try {
-    console.log('[ConfPass Background] Sending passkey to server:', passkeyData);
-    const response = await fetch(`${HTTP_SERVER}/passkey_detected`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(passkeyData)
+async function callNativeHost(message) {
+  return new Promise((resolve) => {
+    chrome.runtime.sendNativeMessage(NATIVE_HOST, message, (response) => {
+      if (chrome.runtime.lastError) {
+        console.error('[ConfPass Background] Native messaging error:', chrome.runtime.lastError);
+        resolve({ success: false, error: chrome.runtime.lastError.message });
+      } else {
+        resolve(response);
+      }
     });
-
-    if (response.ok) {
-      const data = await response.json();
-      console.log('[ConfPass Background] Server response:', data);
-      return data;
-    }
-    console.error('[ConfPass Background] Server error:', response.status);
-    return { success: false };
-  } catch (error) {
-    console.error('[ConfPass Background] Error sending passkey:', error);
-    return { success: false };
-  }
-}
-
-async function requestPasswordFromServer(url) {
-  try {
-    const response = await fetch(`${HTTP_SERVER}/get_password`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ url })
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      return data;
-    }
-    return { success: false };
-  } catch (error) {
-    console.error('Error requesting password:', error);
-    return { success: false };
-  }
-}
-
-async function savePasswordToServer(passwordData) {
-  try {
-    const response = await fetch(`${HTTP_SERVER}/save_password`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(passwordData)
-    });
-    
-    return response.ok;
-  } catch (error) {
-    console.error('Error saving password:', error);
-    return false;
-  }
+  });
 }
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.type === 'request_password') {
-    (async () => {
-      const result = await requestPasswordFromServer(message.url);
-      sendResponse(result);
-    })();
+    callNativeHost({ type: 'get_password', url: message.url }).then(sendResponse);
     return true;
   }
 
   if (message.type === 'save_password') {
-    (async () => {
-      const success = await savePasswordToServer(message.data);
-      sendResponse({ success });
-    })();
+    callNativeHost({ type: 'save_password', data: message.data }).then(sendResponse);
     return true;
   }
 
   if (message.type === 'ping') {
-    (async () => {
-      const connected = await checkServerConnection();
-      sendResponse({ connected });
-    })();
+    callNativeHost({ type: 'ping' }).then(response => {
+      sendResponse({ connected: response && response.type === 'pong' });
+    });
     return true;
   }
 
   if (message.type === 'passkey_detected') {
-    (async () => {
-      console.log('[ConfPass Background] Passkey detected:', message.data);
-      const result = await sendPasskeyToServer(message.data);
-      sendResponse(result);
-    })();
+    callNativeHost({ type: 'passkey_detected', data: message.data }).then(sendResponse);
     return true;
   }
 
   if (message.type === 'open_app') {
-    (async () => {
-      try {
-        await fetch(`${HTTP_SERVER}/focus_window`, { method: 'POST' });
-      } catch (error) {
-        console.log('[ConfPass Background] App not running, trying to launch...');
-      }
-      sendResponse({ success: true });
-    })();
+    callNativeHost({ type: 'open_app' }).then(sendResponse);
     return true;
   }
 
   if (message.type === 'get_passwords_for_site') {
-    (async () => {
-      try {
-        const response = await fetch(`${HTTP_SERVER}/get_passwords_for_site`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ url: message.url })
-        });
-        if (response.ok) {
-          const data = await response.json();
-          sendResponse(data);
-        } else {
-          sendResponse({ success: false, passwords: [] });
-        }
-      } catch (error) {
-        sendResponse({ success: false, passwords: [] });
-      }
-    })();
+    callNativeHost({ type: 'get_passwords_for_site', url: message.url }).then(sendResponse);
     return true;
   }
 
-  // Passkey operations - routed through background to bypass Brave Shields
   if (message.type === 'get_passkeys_for_site') {
-    (async () => {
-      try {
-        const response = await fetch(`${HTTP_SERVER}/get_passkeys`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ rpId: message.rpId })
-        });
-        if (response.ok) {
-          const data = await response.json();
-          sendResponse(data);
-        } else {
-          sendResponse({ success: false, passkeys: [] });
-        }
-      } catch (error) {
-        sendResponse({ success: false, passkeys: [] });
-      }
-    })();
+    callNativeHost({ type: 'get_passkeys', rpId: message.rpId }).then(sendResponse);
     return true;
   }
 
   if (message.type === 'save_passkey_to_server') {
-    (async () => {
-      try {
-        const response = await fetch(`${HTTP_SERVER}/save_passkey`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(message.passkey)
-        });
-        if (response.ok) {
-          const data = await response.json();
-          sendResponse(data);
-        } else {
-          sendResponse({ success: false });
-        }
-      } catch (error) {
-        sendResponse({ success: false });
-      }
-    })();
+    callNativeHost({ type: 'save_passkey', passkey: message.passkey }).then(sendResponse);
     return true;
   }
 
   if (message.type === 'update_passkey_counter') {
-    (async () => {
-      try {
-        const response = await fetch(`${HTTP_SERVER}/update_passkey_counter`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            credentialId: message.credentialId,
-            counter: message.counter
-          })
-        });
-        sendResponse({ success: response.ok });
-      } catch (error) {
-        sendResponse({ success: false });
-      }
-    })();
+    callNativeHost({
+      type: 'update_passkey_counter',
+      credentialId: message.credentialId,
+      counter: message.counter
+    }).then(sendResponse);
     return true;
   }
 
   if (message.type === 'get_totp_code') {
-    (async () => {
-      try {
-        const response = await fetch(`${HTTP_SERVER}/get_totp_code`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ domain: message.domain })
-        });
-        if (response.ok) {
-          const data = await response.json();
-          sendResponse(data);
-        } else {
-          sendResponse({ success: false });
-        }
-      } catch (error) {
-        console.error('[ConfPass Background] TOTP error:', error);
-        sendResponse({ success: false });
-      }
-    })();
+    callNativeHost({ type: 'get_totp_code', domain: message.domain }).then(sendResponse);
     return true;
   }
 });

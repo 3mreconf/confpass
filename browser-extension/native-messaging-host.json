@@ -1,9 +1,0 @@
-{
-  "name": "com.emreconf.confpass",
-  "description": "ConfPass Native Messaging Host",
-  "path": "ABSOLUTE_PATH_TO_confpass-native-host.exe",
-  "type": "stdio",
-  "allowed_origins": [
-    "chrome-extension://hhaieidomjambbcgconfnefkpffjoeoa/"
-  ]
-}
