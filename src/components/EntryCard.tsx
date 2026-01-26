@@ -674,6 +674,78 @@ const EntryCard = memo(function EntryCard({
             e.currentTarget.style.transform = 'translateY(0)';
           }}
           >
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              justifyContent: 'space-between',
+              marginBottom: '1.25rem',
+              paddingBottom: '1rem',
+              borderBottom: '1px solid var(--border)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+                <div style={{
+                  width: '36px',
+                  height: '36px',
+                  borderRadius: '10px',
+                  background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  boxShadow: '0 4px 12px rgba(0, 217, 255, 0.3)'
+                }}>
+                  <MapPin size={18} style={{ color: '#ffffff' }} />
+                </div>
+                <div>
+                  <span className="notes-label" style={{ fontSize: '1rem', fontWeight: 600, display: 'block' }}>Adres Bilgileri</span>
+                  {getFullAddress() && (
+                    <span style={{ 
+                      fontSize: '0.8rem', 
+                      color: 'var(--text-secondary)',
+                      display: 'block',
+                      marginTop: '0.25rem'
+                    }}>
+                      {getFullAddress()}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {getFullAddress() && (
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    handleOpenInMaps(e);
+                  }}
+                  style={{
+                    background: 'rgba(0, 217, 255, 0.1)',
+                    border: '1px solid rgba(0, 217, 255, 0.2)',
+                    borderRadius: '8px',
+                    padding: '0.5rem 0.75rem',
+                    cursor: 'pointer',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem',
+                    color: 'var(--accent)',
+                    transition: 'all 0.2s ease',
+                    fontSize: '0.85rem',
+                    fontWeight: 500
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.background = 'rgba(0, 217, 255, 0.2)';
+                    e.currentTarget.style.borderColor = 'rgba(0, 217, 255, 0.4)';
+                    e.currentTarget.style.transform = 'scale(1.05)';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.background = 'rgba(0, 217, 255, 0.1)';
+                    e.currentTarget.style.borderColor = 'rgba(0, 217, 255, 0.2)';
+                    e.currentTarget.style.transform = 'scale(1)';
+                  }}
+                  title="Haritada Aç"
+                >
+                  <Map size={14} />
+                  <span>Haritada Aç</span>
+                </button>
+              )}
+            </div>
             <div className="notes-content" style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
               {addressData.street && (
                 <div style={{ 
