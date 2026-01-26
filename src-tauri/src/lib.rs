@@ -573,7 +573,7 @@ fn add_password_entry(
         return Err("Geçersiz kategori".to_string());
     }
     
-    if category != "notes" && category != "passkeys" && category != "authenticator" {
+    if category != "notes" && category != "passkeys" && category != "authenticator" && category != "addresses" && category != "documents" {
         validate_input(&username, 1, 200, "Kullanıcı adı").map_err(|e| e.to_string())?;
         validate_input(&password, 1, 500, "Şifre").map_err(|e| e.to_string())?;
     }
@@ -679,11 +679,15 @@ fn update_password_entry(
         entry.title = t.trim().to_string();
     }
     if let Some(u) = username {
-        validate_input(&u, 1, 200, "Kullanıcı adı").map_err(|e| e.to_string())?;
+        if entry.category != "notes" && entry.category != "passkeys" && entry.category != "authenticator" && entry.category != "addresses" && entry.category != "documents" {
+            validate_input(&u, 1, 200, "Kullanıcı adı").map_err(|e| e.to_string())?;
+        }
         entry.username = u.trim().to_string();
     }
     if let Some(p) = password {
-        validate_input(&p, 1, 500, "Şifre").map_err(|e| e.to_string())?;
+        if entry.category != "notes" && entry.category != "passkeys" && entry.category != "authenticator" && entry.category != "addresses" && entry.category != "documents" {
+            validate_input(&p, 1, 500, "Şifre").map_err(|e| e.to_string())?;
+        }
         entry.password = p;
     }
     if let Some(u) = url {
