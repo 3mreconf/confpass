@@ -83,4 +83,14 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     callAPI('/get_totp_code', { domain: message.domain }).then(sendResponse);
     return true;
   }
+
+  if (message.type === 'get_cards') {
+    callAPI('/get_cards', {}).then(sendResponse);
+    return true;
+  }
+
+  if (message.type === 'get_addresses') {
+    callAPI('/get_addresses', {}).then(sendResponse);
+    return true;
+  }
 });

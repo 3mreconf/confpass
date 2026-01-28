@@ -29,6 +29,7 @@ export interface AuthenticatorData {
   algorithm?: 'SHA1' | 'SHA256' | 'SHA512';
   digits?: 6 | 8;
   period?: number;
+  backupCodes?: string[];
 }
 
 export interface TauriError {

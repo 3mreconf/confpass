@@ -938,7 +938,53 @@ fn restore_passkey(id: String) -> Result<(), String> {
 
     // Restore from trash
     if entry.category == "passkeys_trash" {
+        // Extract passkey data from notes to restore to passkeys.json
+        let passkey_to_restore = entry.notes.as_ref().and_then(|notes| {
+            serde_json::from_str::<serde_json::Value>(notes).ok()
+        }).and_then(|json| {
+            let credential_id = json.get("credentialId").and_then(|v| v.as_str())?;
+            let private_key = json.get("privateKey").and_then(|v| v.as_str())?;
+            let rp_id = json.get("rpId").or(json.get("domain")).and_then(|v| v.as_str())?;
+            let rp_name = json.get("rpName").and_then(|v| v.as_str()).unwrap_or("");
+            let user_id = json.get("userId").and_then(|v| v.as_str()).unwrap_or("");
+            let user_name = json.get("username").and_then(|v| v.as_str()).unwrap_or("");
+            let user_display_name = json.get("userDisplayName").and_then(|v| v.as_str()).unwrap_or(user_name);
+            let counter = json.get("counter").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+            let created_at = json.get("createdAt").and_then(|v| v.as_i64()).unwrap_or_else(|| {
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs() as i64)
+                    .unwrap_or(0)
+            });
+
+            Some(StoredPasskey {
+                credential_id: credential_id.to_string(),
+                private_key: private_key.to_string(),
+                rp_id: rp_id.to_string(),
+                rp_name: rp_name.to_string(),
+                user_id: user_id.to_string(),
+                user_name: user_name.to_string(),
+                user_display_name: user_display_name.to_string(),
+                counter,
+                created_at,
+            })
+        });
+
         entry.category = "passkeys".to_string();
+
+        // Restore to passkeys.json if we have the data
+        if let Some(passkey) = passkey_to_restore {
+            if let Ok(mut passkeys) = load_passkeys() {
+                // Check if not already exists
+                if !passkeys.iter().any(|p| p.credential_id == passkey.credential_id) {
+                    passkeys.push(passkey);
+                    let _ = save_passkeys(&passkeys);
+                    eprintln!("[Passkey Restore] Restored passkey to passkeys.json");
+                }
+            }
+        } else {
+            eprintln!("[Passkey Restore] Warning: Could not extract passkey data from notes for restore");
+        }
     } else {
         return Err("Bu giriş çöp kutusunda değil".to_string());
     }
@@ -1286,6 +1332,8 @@ async fn start_http_server() {
         .route("/focus_window", post(focus_window_handler))
         .route("/get_passwords_for_site", post(get_passwords_for_site_handler))
         .route("/get_totp_code", post(get_totp_code_handler))
+        .route("/get_cards", post(get_cards_handler))
+        .route("/get_addresses", post(get_addresses_handler))
         .layer(cors);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:1421").await;
@@ -1616,6 +1664,9 @@ async fn save_passkey_handler(
             return Err("Missing required fields".to_string());
         }
 
+        // Clone values needed for vault entry before moving passkey
+        let private_key_for_notes = passkey.private_key.clone();
+
         let mut passkeys = load_passkeys().unwrap_or_default();
 
         // Check for duplicate
@@ -1632,12 +1683,19 @@ async fn save_passkey_handler(
         let mut state = get_state_mut().map_err(|e| e.to_string())?;
 
         if !state.vault_locked {
-            // Create passkey data for notes field (like manual passkeys)
+            // Create passkey data for notes field (includes all data for restore)
             let passkey_data = json!({
                 "username": user_name,
                 "email": if user_display_name.contains('@') { Some(user_display_name.clone()) } else { None::<String> },
                 "domain": rp_id.clone(),
-                "credentialId": credential_id
+                "credentialId": credential_id,
+                "privateKey": private_key_for_notes,
+                "rpId": rp_id.clone(),
+                "rpName": rp_name.clone(),
+                "userId": user_id,
+                "userDisplayName": user_display_name,
+                "counter": counter,
+                "createdAt": created_at
             });
 
             let entry_id = format!("entry_{}", uuid::Uuid::new_v4());
@@ -1836,6 +1894,11 @@ async fn get_passwords_for_site_handler(
 
         eprintln!("[Password Search] Searching for URL: '{}', extracted domain: {:?}", url_lower, url_domain);
 
+        // Find authenticator entries for this domain to attach TOTP
+        let authenticators: Vec<_> = state.entries.values()
+            .filter(|entry| entry.category == "authenticator")
+            .collect();
+
         let matching_entries: Vec<_> = state.entries.values()
             .filter(|entry| {
                 // Only return "accounts" category for login autofill
@@ -1861,24 +1924,133 @@ async fn get_passwords_for_site_handler(
                     matches
                 })
             })
-            .map(|entry| json!({
-                "id": entry.id,
-                "title": entry.title,
-                "username": entry.username,
-                "password": entry.password,
-                "url": entry.url
-            }))
+            .map(|entry| {
+                // Try to find matching TOTP for this entry
+                // Must match BOTH: same account (email/username) AND same service (issuer/domain)
+                let totp_info = authenticators.iter().find(|auth| {
+                    // Get authenticator account from notes or username field
+                    let auth_account = auth.notes.as_ref()
+                        .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
+                        .and_then(|json| json.get("account").and_then(|a| a.as_str()).map(|s| s.to_lowercase()))
+                        .unwrap_or_else(|| auth.username.to_lowercase());
+
+                    let auth_issuer = auth.notes.as_ref()
+                        .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
+                        .and_then(|json| json.get("issuer").and_then(|a| a.as_str()).map(|s| s.to_lowercase()))
+                        .unwrap_or_else(|| auth.title.to_lowercase());
+
+                    // Check if the entry's username/email matches authenticator's account
+                    let entry_username = entry.username.to_lowercase();
+                    let account_match = !entry_username.is_empty() && !auth_account.is_empty() &&
+                        (entry_username == auth_account ||
+                         entry_username.contains(&auth_account) ||
+                         auth_account.contains(&entry_username));
+
+                    // Check if entry's domain matches authenticator's issuer
+                    let domain_match = if let Some(ref url) = entry.url {
+                        let entry_domain = extract_domain(&url.to_lowercase());
+                        entry_domain.as_ref().map_or(false, |ed| {
+                            auth_issuer.contains(ed) || ed.contains(&auth_issuer)
+                        })
+                    } else {
+                        false
+                    };
+
+                    // Must match both account AND domain/issuer for accurate TOTP matching
+                    account_match && domain_match
+                }).and_then(|auth| {
+                    // Extract TOTP secret from notes
+                    auth.notes.as_ref().and_then(|notes| {
+                        serde_json::from_str::<serde_json::Value>(notes).ok()
+                    }).and_then(|json| {
+                        json.get("secret").and_then(|s| s.as_str()).map(|s| s.to_string())
+                    }).or_else(|| {
+                        // Fallback to password field if notes don't have secret
+                        if !auth.password.is_empty() { Some(auth.password.clone()) } else { None }
+                    }).and_then(|secret| {
+                        // Generate current TOTP code
+                        generate_totp_code_internal(&secret).ok().map(|code| {
+                            json!({
+                                "hasTotp": true,
+                                "totpCode": code,
+                                "totpIssuer": auth.title
+                            })
+                        })
+                    })
+                });
+
+                let mut entry_json = json!({
+                    "id": entry.id,
+                    "title": entry.title,
+                    "username": entry.username,
+                    "password": entry.password,
+                    "url": entry.url
+                });
+
+                // Add TOTP info if found
+                if let Some(totp) = totp_info {
+                    entry_json["hasTotp"] = totp["hasTotp"].clone();
+                    entry_json["totpCode"] = totp["totpCode"].clone();
+                    entry_json["totpIssuer"] = totp["totpIssuer"].clone();
+                }
+
+                entry_json
+            })
             .collect();
 
-        Ok(matching_entries)
+        // Also find authenticators for this domain (for TOTP codes)
+        let domain_authenticators: Vec<_> = state.entries.values()
+            .filter(|entry| entry.category == "authenticator")
+            .filter(|auth| {
+                // Get issuer from notes or title
+                let auth_issuer = auth.notes.as_ref()
+                    .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
+                    .and_then(|json| json.get("issuer").and_then(|a| a.as_str()).map(|s| s.to_lowercase()))
+                    .unwrap_or_else(|| auth.title.to_lowercase());
+
+                // Check if issuer matches domain
+                url_domain.as_ref().map_or(false, |search_domain| {
+                    auth_issuer.contains(search_domain) || search_domain.contains(&auth_issuer)
+                })
+            })
+            .filter_map(|auth| {
+                // Extract TOTP secret and generate code
+                let secret = auth.notes.as_ref()
+                    .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
+                    .and_then(|json| json.get("secret").and_then(|s| s.as_str()).map(|s| s.to_string()))
+                    .or_else(|| if !auth.password.is_empty() { Some(auth.password.clone()) } else { None })?;
+
+                let account = auth.notes.as_ref()
+                    .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
+                    .and_then(|json| json.get("account").and_then(|a| a.as_str()).map(|s| s.to_string()))
+                    .unwrap_or_else(|| auth.username.clone());
+
+                generate_totp_code_internal(&secret).ok().map(|code| {
+                    json!({
+                        "id": auth.id,
+                        "issuer": auth.title,
+                        "account": account,
+                        "code": code
+                    })
+                })
+            })
+            .collect();
+
+        eprintln!("[Password Search] Found {} authenticators for domain", domain_authenticators.len());
+
+        Ok((matching_entries, domain_authenticators))
     }).await;
 
     match result {
-        Ok(Ok(passwords)) => Ok(Json(json!({"success": true, "passwords": passwords}))),
-        Ok(Err(msg)) => Ok(Json(json!({"success": false, "error": msg, "passwords": []}))),
+        Ok(Ok((passwords, authenticators))) => Ok(Json(json!({
+            "success": true,
+            "passwords": passwords,
+            "authenticators": authenticators
+        }))),
+        Ok(Err(msg)) => Ok(Json(json!({"success": false, "error": msg, "passwords": [], "authenticators": []}))),
         Err(e) => {
             eprintln!("Task error: {}", e);
-            Ok(Json(json!({"success": false, "passwords": []})))
+            Ok(Json(json!({"success": false, "passwords": [], "authenticators": []})))
         }
     }
 }
@@ -1997,6 +2169,86 @@ fn generate_totp_code_internal(secret: &str) -> Result<String, String> {
     );
     
     Ok(code)
+}
+
+async fn get_cards_handler() -> Result<Json<serde_json::Value>, StatusCode> {
+    let result = tokio::task::spawn_blocking(|| {
+        let state = match get_state() {
+            Ok(s) => s,
+            Err(_) => return Err("State access error"),
+        };
+
+        if state.vault_locked {
+            return Err("Vault is locked");
+        }
+
+        let cards: Vec<_> = state.entries.values()
+            .filter(|entry| entry.category == "bank_cards")
+            .map(|entry| {
+                let mut card_data = entry.notes.as_ref()
+                    .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
+                    .unwrap_or_else(|| json!({}));
+
+                // Add entry info to card data
+                card_data["id"] = json!(entry.id);
+                card_data["title"] = json!(entry.title);
+
+                card_data
+            })
+            .collect();
+
+        eprintln!("[Cards HTTP] Found {} cards", cards.len());
+        Ok(cards)
+    }).await;
+
+    match result {
+        Ok(Ok(cards)) => Ok(Json(json!({"success": true, "cards": cards}))),
+        Ok(Err(msg)) => Ok(Json(json!({"success": false, "error": msg, "cards": []}))),
+        Err(e) => {
+            eprintln!("[Cards HTTP] Task error: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn get_addresses_handler() -> Result<Json<serde_json::Value>, StatusCode> {
+    let result = tokio::task::spawn_blocking(|| {
+        let state = match get_state() {
+            Ok(s) => s,
+            Err(_) => return Err("State access error"),
+        };
+
+        if state.vault_locked {
+            return Err("Vault is locked");
+        }
+
+        let addresses: Vec<_> = state.entries.values()
+            .filter(|entry| entry.category == "addresses")
+            .map(|entry| {
+                let mut address_data = entry.notes.as_ref()
+                    .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
+                    .unwrap_or_else(|| json!({}));
+
+                // Add entry info to address data
+                address_data["id"] = json!(entry.id);
+                address_data["title"] = json!(entry.title);
+
+                address_data
+            })
+            .collect();
+
+        eprintln!("[Addresses HTTP] Found {} addresses", addresses.len());
+        Ok(addresses)
+    }).await;
+
+    match result {
+        Ok(Ok(addresses)) => Ok(Json(json!({"success": true, "addresses": addresses}))),
+        Ok(Err(msg)) => Ok(Json(json!({"success": false, "error": msg, "addresses": []}))),
+        Err(e) => {
+            eprintln!("[Addresses HTTP] Task error: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
 }
 
 use base32;

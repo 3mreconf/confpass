@@ -25,7 +25,7 @@
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
-      z-index: 2147483646 !important;
+      z-index: 2147483647 !important;
       padding: 0 !important;
       margin: 0 !important;
       box-shadow: 0 2px 8px rgba(245, 158, 11, 0.35) !important;
@@ -49,14 +49,12 @@
 
     .confpass-dropdown {
       position: absolute !important;
-      top: calc(100% + 4px) !important;
-      right: 0 !important;
       width: 280px !important;
-      max-height: 300px !important;
+      max-height: 350px !important;
       background: #0a0a0c !important;
       border: 1px solid rgba(255, 255, 255, 0.06) !important;
       border-radius: 12px !important;
-      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(245, 158, 11, 0.1) !important;
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(245, 158, 11, 0.1), 0 0 100px rgba(0, 0, 0, 0.5) !important;
       z-index: 2147483647 !important;
       overflow: hidden !important;
       font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
@@ -109,7 +107,7 @@
     }
 
     .confpass-dropdown-list {
-      max-height: 220px !important;
+      max-height: 280px !important;
       overflow-y: auto !important;
       padding: 8px !important;
     }
@@ -249,6 +247,168 @@
     .confpass-dropdown-list::-webkit-scrollbar-thumb:hover {
       background: #444 !important;
     }
+
+    .confpass-totp-section {
+      display: flex !important;
+      align-items: center !important;
+      gap: 8px !important;
+      margin-top: 6px !important;
+      padding: 6px 8px !important;
+      background: rgba(16, 185, 129, 0.1) !important;
+      border-radius: 6px !important;
+      border: 1px solid rgba(16, 185, 129, 0.2) !important;
+    }
+
+    .confpass-totp-code {
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace !important;
+      font-size: 14px !important;
+      font-weight: 700 !important;
+      color: #10b981 !important;
+      letter-spacing: 2px !important;
+    }
+
+    .confpass-totp-copy {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 24px !important;
+      height: 24px !important;
+      background: rgba(16, 185, 129, 0.15) !important;
+      border: none !important;
+      border-radius: 4px !important;
+      cursor: pointer !important;
+      transition: all 0.2s !important;
+      padding: 0 !important;
+      margin-left: auto !important;
+    }
+
+    .confpass-totp-copy:hover {
+      background: rgba(16, 185, 129, 0.3) !important;
+    }
+
+    .confpass-totp-copy svg {
+      width: 12px !important;
+      height: 12px !important;
+      stroke: #10b981 !important;
+    }
+
+    .confpass-totp-label {
+      font-size: 9px !important;
+      color: #6b7280 !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.5px !important;
+    }
+
+    .confpass-section-header {
+      display: flex !important;
+      align-items: center !important;
+      gap: 6px !important;
+      padding: 8px 10px 4px !important;
+      font-size: 10px !important;
+      font-weight: 600 !important;
+      color: #71717a !important;
+      text-transform: uppercase !important;
+      letter-spacing: 0.5px !important;
+    }
+
+    .confpass-section-header svg {
+      stroke: #71717a !important;
+    }
+
+    .confpass-auth-item {
+      display: flex !important;
+      align-items: center !important;
+      gap: 10px !important;
+      padding: 10px !important;
+      margin: 4px 8px !important;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.08) 0%, rgba(16, 185, 129, 0.04) 100%) !important;
+      border: 1px solid rgba(16, 185, 129, 0.2) !important;
+      border-radius: 8px !important;
+      transition: all 0.2s !important;
+    }
+
+    .confpass-auth-item:hover {
+      background: rgba(16, 185, 129, 0.12) !important;
+      border-color: rgba(16, 185, 129, 0.3) !important;
+    }
+
+    .confpass-auth-icon {
+      width: 32px !important;
+      height: 32px !important;
+      min-width: 32px !important;
+      background: rgba(16, 185, 129, 0.15) !important;
+      border-radius: 8px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+    }
+
+    .confpass-auth-icon svg {
+      width: 16px !important;
+      height: 16px !important;
+      stroke: #10b981 !important;
+    }
+
+    .confpass-auth-info {
+      flex: 1 !important;
+      min-width: 0 !important;
+    }
+
+    .confpass-auth-issuer {
+      font-size: 12px !important;
+      font-weight: 600 !important;
+      color: #fafafa !important;
+      margin-bottom: 1px !important;
+    }
+
+    .confpass-auth-account {
+      font-size: 10px !important;
+      color: #71717a !important;
+      white-space: nowrap !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+    }
+
+    .confpass-auth-code {
+      font-family: 'SF Mono', Monaco, 'Courier New', monospace !important;
+      font-size: 16px !important;
+      font-weight: 700 !important;
+      color: #10b981 !important;
+      letter-spacing: 2px !important;
+      cursor: pointer !important;
+      padding: 4px 8px !important;
+      background: rgba(16, 185, 129, 0.1) !important;
+      border-radius: 6px !important;
+      transition: all 0.2s !important;
+    }
+
+    .confpass-auth-code:hover {
+      background: rgba(16, 185, 129, 0.2) !important;
+    }
+
+    .confpass-auth-copy {
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      width: 28px !important;
+      height: 28px !important;
+      background: rgba(16, 185, 129, 0.1) !important;
+      border: none !important;
+      border-radius: 6px !important;
+      cursor: pointer !important;
+      transition: all 0.2s !important;
+      padding: 0 !important;
+    }
+
+    .confpass-auth-copy:hover {
+      background: rgba(16, 185, 129, 0.25) !important;
+    }
+
+    .confpass-auth-copy svg {
+      width: 14px !important;
+      height: 14px !important;
+      stroke: #10b981 !important;
+    }
   `;
 
   function injectStyles() {
@@ -283,8 +443,126 @@
     'input[autocomplete="new-password"]'
   ];
 
+  // Card field selectors - comprehensive
+  const CARD_SELECTORS = [
+    'input[name*="card" i][name*="number" i]',
+    'input[name*="cardnumber" i]',
+    'input[name*="cc-number" i]',
+    'input[name*="ccnumber" i]',
+    'input[name*="creditcard" i]',
+    'input[name*="credit-card" i]',
+    'input[name*="debitcard" i]',
+    'input[name*="pan" i]',
+    'input[id*="card" i][id*="number" i]',
+    'input[id*="cardnumber" i]',
+    'input[id*="creditcard" i]',
+    'input[id*="ccnum" i]',
+    'input[autocomplete="cc-number"]',
+    'input[autocomplete="cc-name"]',
+    'input[autocomplete="cc-exp"]',
+    'input[autocomplete="cc-exp-month"]',
+    'input[autocomplete="cc-exp-year"]',
+    'input[autocomplete="cc-csc"]',
+    'input[data-card]',
+    'input[placeholder*="kart" i][placeholder*="numa" i]',
+    'input[placeholder*="card" i][placeholder*="number" i]',
+    'input[placeholder*="1234" i]',
+    'input[placeholder*="•••• ••••" i]',
+    'input[aria-label*="kart numa" i]',
+    'input[aria-label*="card number" i]',
+    'input[aria-label*="kredi kart" i]',
+    'input[aria-label*="credit card" i]',
+    'input[name*="cvv" i]',
+    'input[name*="cvc" i]',
+    'input[name*="security" i][name*="code" i]',
+    'input[name*="expir" i]',
+    'input[name*="exp" i][name*="date" i]',
+    'input[name*="cardholder" i]',
+    'input[name*="card" i][name*="holder" i]',
+    'input[name*="card" i][name*="name" i]',
+    'input[placeholder*="MM" i][placeholder*="YY" i]',
+    'input[placeholder*="CVV" i]',
+    'input[placeholder*="CVC" i]',
+    'input[maxlength="16"]',
+    'input[maxlength="19"]'
+  ];
+
+  // CVV specific selectors
+  const CVV_SELECTORS = [
+    'input[name*="cvv" i]',
+    'input[name*="cvc" i]',
+    'input[name*="cvn" i]',
+    'input[name*="security" i][name*="code" i]',
+    'input[autocomplete="cc-csc"]',
+    'input[placeholder*="CVV" i]',
+    'input[placeholder*="CVC" i]',
+    'input[placeholder*="güvenlik" i]',
+    'input[maxlength="3"]',
+    'input[maxlength="4"]'
+  ];
+
+  // Expiry selectors
+  const EXPIRY_SELECTORS = [
+    'input[name*="expir" i]',
+    'input[name*="exp" i]',
+    'input[autocomplete="cc-exp"]',
+    'input[autocomplete="cc-exp-month"]',
+    'input[autocomplete="cc-exp-year"]',
+    'input[placeholder*="MM" i]',
+    'input[placeholder*="AA" i]',
+    'input[placeholder*="YY" i]'
+  ];
+
+  // Address field selectors - comprehensive
+  const ADDRESS_SELECTORS = [
+    'input[name*="address" i]',
+    'input[name*="street" i]',
+    'input[name*="adres" i]',
+    'input[name*="konum" i]',
+    'input[name*="mahalle" i]',
+    'input[name*="sokak" i]',
+    'input[name*="cadde" i]',
+    'input[name*="apartman" i]',
+    'input[name*="bina" i]',
+    'input[name*="daire" i]',
+    'input[name*="city" i]',
+    'input[name*="sehir" i]',
+    'input[name*="şehir" i]',
+    'input[name*="ilce" i]',
+    'input[name*="ilçe" i]',
+    'input[name*="postal" i]',
+    'input[name*="zip" i]',
+    'input[name*="posta" i]',
+    'input[id*="address" i]',
+    'input[id*="adres" i]',
+    'input[id*="street" i]',
+    'input[id*="city" i]',
+    'input[autocomplete="street-address"]',
+    'input[autocomplete="address-line1"]',
+    'input[autocomplete="address-line2"]',
+    'input[autocomplete="address-level1"]',
+    'input[autocomplete="address-level2"]',
+    'input[autocomplete="postal-code"]',
+    'input[autocomplete="country"]',
+    'input[autocomplete="country-name"]',
+    'textarea[name*="address" i]',
+    'textarea[name*="adres" i]',
+    'textarea[id*="address" i]',
+    'input[placeholder*="adres" i]',
+    'input[placeholder*="address" i]',
+    'input[placeholder*="sokak" i]',
+    'input[placeholder*="mahalle" i]',
+    'input[placeholder*="şehir" i]',
+    'input[placeholder*="posta kodu" i]',
+    'input[aria-label*="adres" i]',
+    'input[aria-label*="address" i]',
+    'input[aria-label*="konum" i]',
+    'input[aria-label*="teslimat" i]',
+    'input[aria-label*="delivery" i]'
+  ];
+
   function findLoginFields() {
-    const fields = { username: [], password: [] };
+    const fields = { username: [], password: [], card: [], address: [] };
 
     // Find password fields first
     for (const selector of PASSWORD_SELECTORS) {
@@ -308,6 +586,28 @@
       } catch (e) {}
     }
 
+    // Find card fields
+    for (const selector of CARD_SELECTORS) {
+      try {
+        document.querySelectorAll(selector).forEach(field => {
+          if (isFieldVisible(field) && !fields.card.includes(field)) {
+            fields.card.push(field);
+          }
+        });
+      } catch (e) {}
+    }
+
+    // Find address fields
+    for (const selector of ADDRESS_SELECTORS) {
+      try {
+        document.querySelectorAll(selector).forEach(field => {
+          if (isFieldVisible(field) && !fields.address.includes(field)) {
+            fields.address.push(field);
+          }
+        });
+      } catch (e) {}
+    }
+
     // If we found password fields but no username, look for nearby text inputs
     if (fields.password.length > 0 && fields.username.length === 0) {
       fields.password.forEach(pwField => {
@@ -326,6 +626,99 @@
     return fields;
   }
 
+  function getFieldType(field) {
+    // Get field attributes for analysis
+    const name = (field.name || '').toLowerCase();
+    const id = (field.id || '').toLowerCase();
+    const placeholder = (field.placeholder || '').toLowerCase();
+    const ariaLabel = (field.getAttribute('aria-label') || '').toLowerCase();
+    const autocomplete = (field.getAttribute('autocomplete') || '').toLowerCase();
+    const type = (field.type || '').toLowerCase();
+    const maxLength = field.maxLength;
+    const className = (field.className || '').toLowerCase();
+
+    // Check surrounding context (labels, parent elements)
+    const label = field.labels?.[0]?.textContent?.toLowerCase() || '';
+    const parentText = field.parentElement?.textContent?.toLowerCase() || '';
+
+    // Card-related keywords
+    const cardKeywords = ['card', 'kart', 'kredi', 'credit', 'debit', 'banka', 'pan', 'payment', 'ödeme'];
+    const cvvKeywords = ['cvv', 'cvc', 'cvn', 'güvenlik kodu', 'security code', 'guvenlik'];
+    const expiryKeywords = ['expir', 'son kullanma', 'tarih', 'mm/yy', 'aa/yy', 'valid', 'geçerlilik'];
+    const cardHolderKeywords = ['cardholder', 'kart sahibi', 'holder', 'card name'];
+
+    // Address-related keywords
+    const addressKeywords = ['address', 'adres', 'street', 'sokak', 'cadde', 'mahalle', 'konum',
+                             'teslimat', 'delivery', 'shipping', 'billing', 'fatura'];
+    const cityKeywords = ['city', 'şehir', 'sehir', 'il', 'ilce', 'ilçe', 'town'];
+    const postalKeywords = ['postal', 'zip', 'posta', 'postcode'];
+    const countryKeywords = ['country', 'ülke', 'ulke'];
+
+    // Email-related keywords (to exclude from address detection)
+    const emailKeywords = ['email', 'e-posta', 'eposta', 'mail'];
+
+    // Helper function to check if any keyword exists
+    const hasKeyword = (keywords) => {
+      const allText = `${name} ${id} ${placeholder} ${ariaLabel} ${label} ${className}`;
+      return keywords.some(kw => allText.includes(kw));
+    };
+
+    // Check if this is an email field first - should be treated as password/login
+    if (type === 'email' || hasKeyword(emailKeywords)) {
+      return 'password';
+    }
+
+    // Check autocomplete attribute first (most reliable)
+    if (autocomplete.startsWith('cc-')) return 'card';
+    if (autocomplete === 'email' || autocomplete === 'username') return 'password';
+    if (autocomplete.includes('address') || autocomplete.includes('street') ||
+        autocomplete.includes('postal') || autocomplete.includes('country')) return 'address';
+
+    // Check for CVV (maxLength 3-4 is a strong indicator)
+    if ((maxLength === 3 || maxLength === 4) && hasKeyword(cvvKeywords)) return 'card';
+
+    // Check for card number (maxLength 16-19)
+    if ((maxLength === 16 || maxLength === 19) && hasKeyword(cardKeywords)) return 'card';
+
+    // Check for expiry
+    if (hasKeyword(expiryKeywords) && (placeholder.includes('mm') || placeholder.includes('aa'))) return 'card';
+
+    // Check selector matches
+    for (const selector of CVV_SELECTORS) {
+      try { if (field.matches(selector)) return 'card'; } catch (e) {}
+    }
+    for (const selector of EXPIRY_SELECTORS) {
+      try { if (field.matches(selector)) return 'card'; } catch (e) {}
+    }
+    for (const selector of CARD_SELECTORS) {
+      try { if (field.matches(selector)) return 'card'; } catch (e) {}
+    }
+
+    // Check for address by keywords
+    if (hasKeyword(addressKeywords) || hasKeyword(cityKeywords) ||
+        hasKeyword(postalKeywords) || hasKeyword(countryKeywords)) {
+      // Make sure it's not a card field or email field misidentified
+      if (!hasKeyword(cardKeywords) && !hasKeyword(emailKeywords)) return 'address';
+    }
+
+    for (const selector of ADDRESS_SELECTORS) {
+      try { if (field.matches(selector)) return 'address'; } catch (e) {}
+    }
+
+    // Check for password field
+    if (type === 'password') return 'password';
+    for (const selector of PASSWORD_SELECTORS) {
+      try { if (field.matches(selector)) return 'password'; } catch (e) {}
+    }
+
+    // Check for username/email
+    for (const selector of USERNAME_SELECTORS) {
+      try { if (field.matches(selector)) return 'password'; } catch (e) {}
+    }
+
+    return 'password'; // default for login fields
+  }
+
   function isFieldVisible(field) {
     if (!field) return false;
     if (field.disabled || field.readOnly) return false;
@@ -341,9 +734,12 @@
   }
 
   // ========== Icon and Dropdown ==========
-  function addIconToField(field) {
+  function addIconToField(field, fieldType = null) {
     if (field.dataset.confpassIcon) return;
     field.dataset.confpassIcon = 'true';
+
+    const type = fieldType || getFieldType(field);
+    field.dataset.confpassFieldType = type;
 
     // Make parent relative if needed
     const parent = field.parentElement;
@@ -372,7 +768,7 @@
     iconBtn.addEventListener('click', (e) => {
       e.preventDefault();
       e.stopPropagation();
-      toggleDropdown(field, iconBtn);
+      toggleDropdown(field, iconBtn, type);
     });
 
     // Insert icon after field in parent
@@ -382,7 +778,7 @@
     }
   }
 
-  function toggleDropdown(field, iconBtn) {
+  function toggleDropdown(field, iconBtn, fieldType = 'password') {
     // Close existing dropdown
     if (activeDropdown) {
       activeDropdown.remove();
@@ -394,14 +790,17 @@
     dropdown.className = 'confpass-dropdown';
     activeDropdown = dropdown;
 
-    // Header
+    // Header with appropriate icon
+    const headerIcon = fieldType === 'card'
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="1" y="4" width="22" height="16" rx="2" ry="2"/><line x1="1" y1="10" x2="23" y2="10"/></svg>'
+      : fieldType === 'address'
+      ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/></svg>'
+      : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+
     dropdown.innerHTML = `
       <div class="confpass-dropdown-header">
         <div class="confpass-dropdown-logo">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
-            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
-          </svg>
+          ${headerIcon}
         </div>
         <span class="confpass-dropdown-title">ConfPass</span>
       </div>
@@ -410,22 +809,78 @@
       </div>
     `;
 
-    // Position dropdown
-    const parent = iconBtn.parentElement;
-    parent.appendChild(dropdown);
+    // Position dropdown - append to body for highest z-index
+    document.body.appendChild(dropdown);
 
-    // Load passwords
-    loadPasswordsForDropdown(dropdown, field);
+    // Position dropdown near the icon button
+    const positionDropdown = () => {
+      const iconRect = iconBtn.getBoundingClientRect();
+      const viewportHeight = window.innerHeight;
+      const viewportWidth = window.innerWidth;
+      const dropdownHeight = 350; // max height
+      const dropdownWidth = 280;
 
-    // Close on outside click
+      let top = iconRect.bottom + 4 + window.scrollY;
+      let left = iconRect.right - dropdownWidth + window.scrollX;
+
+      // Check if dropdown should open upward
+      const spaceBelow = viewportHeight - iconRect.bottom;
+      const spaceAbove = iconRect.top;
+
+      if (spaceBelow < dropdownHeight && spaceAbove > dropdownHeight) {
+        top = iconRect.top - dropdownHeight - 4 + window.scrollY;
+        dropdown.classList.add('confpass-dropdown-upward');
+      }
+
+      // Keep dropdown in viewport horizontally
+      if (left < 10) {
+        left = 10;
+      }
+      if (left + dropdownWidth > viewportWidth - 10) {
+        left = viewportWidth - dropdownWidth - 10;
+      }
+
+      dropdown.style.position = 'absolute';
+      dropdown.style.top = `${top}px`;
+      dropdown.style.left = `${left}px`;
+    };
+
+    positionDropdown();
+
+    // Load appropriate data based on field type
+    if (fieldType === 'card') {
+      loadCardsForDropdown(dropdown, field);
+    } else if (fieldType === 'address') {
+      loadAddressesForDropdown(dropdown, field);
+    } else {
+      loadPasswordsForDropdown(dropdown, field);
+    }
+
+    // Close on outside click or outside scroll
     const closeHandler = (e) => {
       if (!dropdown.contains(e.target) && e.target !== iconBtn) {
         dropdown.remove();
         activeDropdown = null;
         document.removeEventListener('click', closeHandler);
+        window.removeEventListener('scroll', scrollHandler, true);
       }
     };
-    setTimeout(() => document.addEventListener('click', closeHandler), 0);
+
+    const scrollHandler = (e) => {
+      // Don't close if scrolling inside the dropdown
+      if (dropdown.contains(e.target)) {
+        return;
+      }
+      dropdown.remove();
+      activeDropdown = null;
+      document.removeEventListener('click', closeHandler);
+      window.removeEventListener('scroll', scrollHandler, true);
+    };
+
+    setTimeout(() => {
+      document.addEventListener('click', closeHandler);
+      window.addEventListener('scroll', scrollHandler, true);
+    }, 0);
   }
 
   function loadPasswordsForDropdown(dropdown, targetField) {
@@ -446,9 +901,12 @@
         return;
       }
 
-      if (response && response.success && response.passwords && response.passwords.length > 0) {
-        cachedPasswords = response.passwords;
-        renderDropdownItems(listEl, response.passwords, targetField);
+      const hasPasswords = response && response.success && response.passwords && response.passwords.length > 0;
+      const hasAuthenticators = response && response.success && response.authenticators && response.authenticators.length > 0;
+
+      if (hasPasswords || hasAuthenticators) {
+        cachedPasswords = response.passwords || [];
+        renderDropdownWithAuth(listEl, response.passwords || [], response.authenticators || [], targetField);
       } else {
         showDropdownEmpty(listEl);
       }
@@ -474,7 +932,12 @@
     });
   }
 
-  function showDropdownEmpty(listEl) {
+  function showDropdownEmpty(listEl, type = 'password') {
+    const messages = {
+      password: 'Bu site için kayıtlı hesap yok',
+      card: 'Kayıtlı kart yok',
+      address: 'Kayıtlı adres yok'
+    };
     listEl.innerHTML = `
       <div class="confpass-dropdown-empty">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -482,22 +945,415 @@
           <line x1="12" y1="8" x2="12" y2="12"/>
           <line x1="12" y1="16" x2="12.01" y2="16"/>
         </svg>
-        <div>Bu site icin kayitli hesap yok</div>
+        <div>${messages[type] || messages.password}</div>
       </div>
     `;
   }
 
-  function renderDropdownItems(listEl, passwords, targetField) {
-    listEl.innerHTML = passwords.map((pw, i) => `
-      <button class="confpass-dropdown-item" data-index="${i}">
-        <div class="confpass-dropdown-item-icon">${(pw.title || pw.username || '?')[0].toUpperCase()}</div>
-        <div class="confpass-dropdown-item-info">
-          <div class="confpass-dropdown-item-title">${escapeHtml(pw.title || 'Hesap')}</div>
-          <div class="confpass-dropdown-item-username">${escapeHtml(pw.username)}</div>
-        </div>
-      </button>
-    `).join('');
+  function loadCardsForDropdown(dropdown, targetField) {
+    const listEl = dropdown.querySelector('.confpass-dropdown-list');
 
+    chrome.runtime.sendMessage({ type: 'get_cards' }, (response) => {
+      if (chrome.runtime.lastError) {
+        showDropdownLocked(listEl);
+        return;
+      }
+
+      if (response && response.error === 'Vault is locked') {
+        showDropdownLocked(listEl);
+        return;
+      }
+
+      if (response && response.success && response.cards && response.cards.length > 0) {
+        renderCardsDropdown(listEl, response.cards, targetField);
+      } else {
+        showDropdownEmpty(listEl, 'card');
+      }
+    });
+  }
+
+  function loadAddressesForDropdown(dropdown, targetField) {
+    const listEl = dropdown.querySelector('.confpass-dropdown-list');
+
+    chrome.runtime.sendMessage({ type: 'get_addresses' }, (response) => {
+      if (chrome.runtime.lastError) {
+        showDropdownLocked(listEl);
+        return;
+      }
+
+      if (response && response.error === 'Vault is locked') {
+        showDropdownLocked(listEl);
+        return;
+      }
+
+      if (response && response.success && response.addresses && response.addresses.length > 0) {
+        renderAddressesDropdown(listEl, response.addresses, targetField);
+      } else {
+        showDropdownEmpty(listEl, 'address');
+      }
+    });
+  }
+
+  function renderCardsDropdown(listEl, cards, targetField) {
+    listEl.innerHTML = cards.map((card, i) => {
+      const lastFour = card.cardNumber ? card.cardNumber.slice(-4) : '****';
+      const cardType = card.cardType || 'Kart';
+      return `
+        <button class="confpass-dropdown-item" data-index="${i}">
+          <div class="confpass-dropdown-item-icon" style="background: rgba(59, 130, 246, 0.15) !important; color: #3b82f6 !important;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+              <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+              <line x1="1" y1="10" x2="23" y2="10"/>
+            </svg>
+          </div>
+          <div class="confpass-dropdown-item-info">
+            <div class="confpass-dropdown-item-title">${escapeHtml(card.title || cardType)}</div>
+            <div class="confpass-dropdown-item-username">•••• •••• •••• ${escapeHtml(lastFour)}</div>
+          </div>
+        </button>
+      `;
+    }).join('');
+
+    listEl.querySelectorAll('.confpass-dropdown-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const index = parseInt(item.dataset.index);
+        const card = cards[index];
+        if (card && card.cardNumber) {
+          fillCardFields(card);
+          if (activeDropdown) {
+            activeDropdown.remove();
+            activeDropdown = null;
+          }
+        }
+      });
+    });
+  }
+
+  function renderAddressesDropdown(listEl, addresses, targetField) {
+    listEl.innerHTML = addresses.map((addr, i) => {
+      const displayAddr = [addr.street, addr.city, addr.country].filter(Boolean).join(', ') || addr.title;
+      return `
+        <button class="confpass-dropdown-item" data-index="${i}">
+          <div class="confpass-dropdown-item-icon" style="background: rgba(16, 185, 129, 0.15) !important; color: #10b981 !important;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 16px; height: 16px;">
+              <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+              <circle cx="12" cy="10" r="3"/>
+            </svg>
+          </div>
+          <div class="confpass-dropdown-item-info">
+            <div class="confpass-dropdown-item-title">${escapeHtml(addr.title || 'Adres')}</div>
+            <div class="confpass-dropdown-item-username">${escapeHtml(displayAddr)}</div>
+          </div>
+        </button>
+      `;
+    }).join('');
+
+    listEl.querySelectorAll('.confpass-dropdown-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const index = parseInt(item.dataset.index);
+        const addr = addresses[index];
+        if (addr) {
+          fillAddressFields(addr, targetField);
+          if (activeDropdown) {
+            activeDropdown.remove();
+            activeDropdown = null;
+          }
+        }
+      });
+    });
+  }
+
+  function fillCardFields(card) {
+    // Fill card number
+    const cardNumberFields = document.querySelectorAll(CARD_SELECTORS.join(','));
+    cardNumberFields.forEach(field => {
+      if (isFieldVisible(field) && card.cardNumber) {
+        field.value = card.cardNumber;
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+
+    // Fill expiry
+    const expirySelectors = [
+      'input[name*="expir" i]', 'input[name*="exp" i]', 'input[autocomplete="cc-exp"]',
+      'input[placeholder*="MM" i]', 'input[placeholder*="AA" i]'
+    ];
+    if (card.expiry) {
+      document.querySelectorAll(expirySelectors.join(',')).forEach(field => {
+        if (isFieldVisible(field)) {
+          field.value = card.expiry;
+          field.dispatchEvent(new Event('input', { bubbles: true }));
+          field.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    }
+
+    // Fill CVV
+    const cvvSelectors = [
+      'input[name*="cvv" i]', 'input[name*="cvc" i]', 'input[name*="security" i]',
+      'input[autocomplete="cc-csc"]', 'input[placeholder*="CVV" i]', 'input[placeholder*="CVC" i]'
+    ];
+    if (card.cvv) {
+      document.querySelectorAll(cvvSelectors.join(',')).forEach(field => {
+        if (isFieldVisible(field)) {
+          field.value = card.cvv;
+          field.dispatchEvent(new Event('input', { bubbles: true }));
+          field.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    }
+
+    // Fill cardholder name
+    const nameSelectors = [
+      'input[name*="holder" i]', 'input[name*="cardholder" i]', 'input[autocomplete="cc-name"]',
+      'input[placeholder*="ad" i][placeholder*="kart" i]'
+    ];
+    if (card.cardholderName) {
+      document.querySelectorAll(nameSelectors.join(',')).forEach(field => {
+        if (isFieldVisible(field)) {
+          field.value = card.cardholderName;
+          field.dispatchEvent(new Event('input', { bubbles: true }));
+          field.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+    }
+  }
+
+  function fillAddressFields(addr, targetField) {
+    // Helper to fill a field and dispatch events
+    const fillField = (field, value) => {
+      if (!field || !value) return false;
+      if (field.tagName === 'SELECT') {
+        const option = Array.from(field.options).find(o =>
+          o.text.toLowerCase().includes(value.toLowerCase()) ||
+          o.value.toLowerCase().includes(value.toLowerCase())
+        );
+        if (option) {
+          field.value = option.value;
+        } else {
+          return false;
+        }
+      } else {
+        field.value = value;
+      }
+      field.dispatchEvent(new Event('input', { bubbles: true }));
+      field.dispatchEvent(new Event('change', { bubbles: true }));
+      field.dispatchEvent(new Event('blur', { bubbles: true }));
+      return true;
+    };
+
+    // Helper to determine which address component fits this field
+    const getFieldAddressType = (field) => {
+      const name = (field.name || '').toLowerCase();
+      const id = (field.id || '').toLowerCase();
+      const placeholder = (field.placeholder || '').toLowerCase();
+      const autocomplete = (field.getAttribute('autocomplete') || '').toLowerCase();
+      const allText = `${name} ${id} ${placeholder} ${autocomplete}`;
+
+      if (autocomplete.includes('street') || autocomplete.includes('address-line') ||
+          allText.includes('street') || allText.includes('sokak') || allText.includes('cadde') ||
+          allText.includes('mahalle') || allText.includes('adres') || allText.includes('address')) {
+        return 'street';
+      }
+      if (autocomplete === 'address-level2' || allText.includes('city') ||
+          allText.includes('şehir') || allText.includes('sehir') || allText.includes('il')) {
+        return 'city';
+      }
+      if (autocomplete === 'address-level1' || allText.includes('state') ||
+          allText.includes('province') || allText.includes('eyalet')) {
+        return 'state';
+      }
+      if (autocomplete === 'postal-code' || allText.includes('postal') ||
+          allText.includes('zip') || allText.includes('posta')) {
+        return 'postal';
+      }
+      if (autocomplete.includes('country') || allText.includes('country') ||
+          allText.includes('ülke') || allText.includes('ulke')) {
+        return 'country';
+      }
+      return 'street'; // default to street for generic address fields
+    };
+
+    // Create full address string
+    const fullAddress = [addr.street, addr.city, addr.state, addr.postalCode, addr.country]
+      .filter(Boolean).join(', ');
+
+    // First, fill the target field that was clicked
+    if (targetField && isFieldVisible(targetField)) {
+      const fieldType = getFieldAddressType(targetField);
+      let valueToFill = fullAddress; // default to full address
+
+      switch (fieldType) {
+        case 'street': valueToFill = addr.street || fullAddress; break;
+        case 'city': valueToFill = addr.city || ''; break;
+        case 'state': valueToFill = addr.state || ''; break;
+        case 'postal': valueToFill = addr.postalCode || ''; break;
+        case 'country': valueToFill = addr.country || ''; break;
+      }
+
+      fillField(targetField, valueToFill);
+    }
+
+    // Now try to fill other address fields on the page
+    const streetSelectors = [
+      'input[name*="street" i]', 'input[name*="address" i]', 'input[name*="adres" i]',
+      'input[name*="sokak" i]', 'input[name*="cadde" i]', 'input[name*="mahalle" i]',
+      'input[autocomplete="street-address"]', 'input[autocomplete="address-line1"]',
+      'input[autocomplete="address-line2"]',
+      'textarea[name*="address" i]', 'textarea[name*="adres" i]',
+      'input[id*="address" i]', 'input[id*="adres" i]', 'input[id*="street" i]',
+      'input[placeholder*="adres" i]', 'input[placeholder*="sokak" i]'
+    ];
+    if (addr.street) {
+      document.querySelectorAll(streetSelectors.join(',')).forEach(field => {
+        if (isFieldVisible(field) && field !== targetField && !field.value) {
+          fillField(field, addr.street);
+        }
+      });
+    }
+
+    // Fill city
+    const citySelectors = [
+      'input[name*="city" i]', 'input[name*="sehir" i]', 'input[name*="şehir" i]',
+      'input[name*="il" i]', 'input[id*="city" i]', 'input[id*="sehir" i]',
+      'input[autocomplete="address-level2"]',
+      'input[placeholder*="şehir" i]', 'input[placeholder*="city" i]',
+      'select[name*="city" i]', 'select[name*="il" i]', 'select[id*="city" i]'
+    ];
+    if (addr.city) {
+      document.querySelectorAll(citySelectors.join(',')).forEach(field => {
+        if (isFieldVisible(field) && field !== targetField && !field.value) {
+          fillField(field, addr.city);
+        }
+      });
+    }
+
+    // Fill state/province
+    const stateSelectors = [
+      'input[name*="state" i]', 'input[name*="province" i]', 'input[name*="region" i]',
+      'input[autocomplete="address-level1"]',
+      'select[name*="state" i]', 'select[name*="province" i]', 'select[id*="state" i]'
+    ];
+    if (addr.state) {
+      document.querySelectorAll(stateSelectors.join(',')).forEach(field => {
+        if (isFieldVisible(field) && field !== targetField && !field.value) {
+          fillField(field, addr.state);
+        }
+      });
+    }
+
+    // Fill postal code
+    const postalSelectors = [
+      'input[name*="postal" i]', 'input[name*="zip" i]', 'input[name*="posta" i]',
+      'input[name*="postcode" i]', 'input[id*="postal" i]', 'input[id*="zip" i]',
+      'input[autocomplete="postal-code"]',
+      'input[placeholder*="posta" i]', 'input[placeholder*="zip" i]'
+    ];
+    if (addr.postalCode) {
+      document.querySelectorAll(postalSelectors.join(',')).forEach(field => {
+        if (isFieldVisible(field) && field !== targetField && !field.value) {
+          fillField(field, addr.postalCode);
+        }
+      });
+    }
+
+    // Fill country
+    const countrySelectors = [
+      'input[name*="country" i]', 'input[name*="ulke" i]', 'input[name*="ülke" i]',
+      'input[id*="country" i]', 'input[id*="ulke" i]',
+      'input[autocomplete="country-name"]', 'input[autocomplete="country"]',
+      'select[name*="country" i]', 'select[id*="country" i]',
+      'select[autocomplete="country"]', 'select[autocomplete="country-name"]'
+    ];
+    if (addr.country) {
+      document.querySelectorAll(countrySelectors.join(',')).forEach(field => {
+        if (isFieldVisible(field) && field !== targetField && !field.value) {
+          fillField(field, addr.country);
+        }
+      });
+    }
+  }
+
+  function renderDropdownItems(listEl, passwords, targetField) {
+    renderDropdownWithAuth(listEl, passwords, [], targetField);
+  }
+
+  function renderDropdownWithAuth(listEl, passwords, authenticators, targetField) {
+    let html = '';
+
+    // Render authenticators section first (if any)
+    if (authenticators.length > 0) {
+      html += `
+        <div class="confpass-section-header">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+          </svg>
+          <span>Doğrulama Kodları</span>
+        </div>
+      `;
+      html += authenticators.map((auth, i) => `
+        <div class="confpass-auth-item" data-auth-index="${i}">
+          <div class="confpass-auth-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+            </svg>
+          </div>
+          <div class="confpass-auth-info">
+            <div class="confpass-auth-issuer">${escapeHtml(auth.issuer)}</div>
+            <div class="confpass-auth-account">${escapeHtml(auth.account)}</div>
+          </div>
+          <div class="confpass-auth-code" data-auth-code="${escapeHtml(auth.code)}">
+            <span>${auth.code.slice(0, 3)}</span>
+            <span style="opacity: 0.5;"> </span>
+            <span>${auth.code.slice(3)}</span>
+          </div>
+          <button class="confpass-auth-copy" data-auth-code="${escapeHtml(auth.code)}" title="Kodu Kopyala">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+          </button>
+        </div>
+      `).join('');
+    }
+
+    // Render passwords section
+    if (passwords.length > 0) {
+      if (authenticators.length > 0) {
+        html += `
+          <div class="confpass-section-header" style="margin-top: 8px;">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="width: 14px; height: 14px;">
+              <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+            <span>Hesaplar</span>
+          </div>
+        `;
+      }
+      html += passwords.map((pw, i) => `
+        <button class="confpass-dropdown-item" data-index="${i}">
+          <div class="confpass-dropdown-item-icon">${(pw.title || pw.username || '?')[0].toUpperCase()}</div>
+          <div class="confpass-dropdown-item-info">
+            <div class="confpass-dropdown-item-title">${escapeHtml(pw.title || 'Hesap')}</div>
+            <div class="confpass-dropdown-item-username">${escapeHtml(pw.username)}</div>
+          </div>
+        </button>
+      `).join('');
+    }
+
+    // If only authenticators, no passwords
+    if (passwords.length === 0 && authenticators.length > 0) {
+      html += `
+        <div class="confpass-dropdown-empty" style="padding: 12px;">
+          <div style="font-size: 11px; color: #71717a;">Bu site için kayıtlı hesap yok</div>
+        </div>
+      `;
+    }
+
+    listEl.innerHTML = html;
+
+    // Password click handlers
     listEl.querySelectorAll('.confpass-dropdown-item').forEach(item => {
       item.addEventListener('click', () => {
         const index = parseInt(item.dataset.index);
@@ -508,6 +1364,45 @@
             activeDropdown.remove();
             activeDropdown = null;
           }
+        }
+      });
+    });
+
+    // Auth code click to copy
+    listEl.querySelectorAll('.confpass-auth-code').forEach(codeEl => {
+      codeEl.addEventListener('click', () => {
+        const code = codeEl.dataset.authCode;
+        if (code) {
+          navigator.clipboard.writeText(code).then(() => {
+            const original = codeEl.innerHTML;
+            codeEl.innerHTML = '<span style="color: #10b981;">Kopyalandı!</span>';
+            setTimeout(() => { codeEl.innerHTML = original; }, 1500);
+          });
+        }
+      });
+    });
+
+    // Auth copy button handlers
+    listEl.querySelectorAll('.confpass-auth-copy').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const code = btn.dataset.authCode;
+        if (code) {
+          navigator.clipboard.writeText(code).then(() => {
+            btn.innerHTML = `
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="20 6 9 17 4 12"/>
+              </svg>
+            `;
+            setTimeout(() => {
+              btn.innerHTML = `
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+              `;
+            }, 1500);
+          });
         }
       });
     });
@@ -547,8 +1442,10 @@
   function scanAndAttachIcons() {
     const fields = findLoginFields();
 
-    fields.username.forEach(field => addIconToField(field));
-    fields.password.forEach(field => addIconToField(field));
+    fields.username.forEach(field => addIconToField(field, 'password'));
+    fields.password.forEach(field => addIconToField(field, 'password'));
+    fields.card.forEach(field => addIconToField(field, 'card'));
+    fields.address.forEach(field => addIconToField(field, 'address'));
   }
 
   function init() {
