@@ -6,8 +6,7 @@
   "author": "emreconf",
 
   "permissions": [
-    "activeTab",
-    "nativeMessaging"
+    "activeTab"
   ],
 
   "host_permissions": [

@@ -1,4 +1,5 @@
 document.addEventListener('DOMContentLoaded', () => {
+  const statusBar = document.getElementById('statusBar');
   const statusDot = document.getElementById('statusDot');
   const statusText = document.getElementById('statusText');
   const loadingState = document.getElementById('loadingState');
@@ -22,7 +23,7 @@ document.addEventListener('DOMContentLoaded', () => {
         currentSiteEl.textContent = currentDomain;
       } catch (e) {
         currentDomain = '';
-        currentSiteEl.textContent = 'Gecersiz URL';
+        currentSiteEl.textContent = 'Geçersiz URL';
       }
     }
     checkConnection();
@@ -39,10 +40,10 @@ document.addEventListener('DOMContentLoaded', () => {
         loadingState.style.display = 'flex';
         break;
       case 'locked':
-        lockedState.style.display = 'block';
+        lockedState.style.display = 'flex';
         break;
       case 'disconnected':
-        disconnectedState.style.display = 'block';
+        disconnectedState.style.display = 'flex';
         break;
       case 'connected':
         mainContent.style.display = 'block';
@@ -52,13 +53,15 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function updateStatus(connected, locked = false) {
     if (connected) {
+      statusBar.classList.add('connected');
       statusDot.classList.add('connected');
       statusText.classList.add('connected');
-      statusText.textContent = locked ? 'Kasa Kilitli' : 'Bagli';
+      statusText.textContent = locked ? 'Kasa Kilitli' : 'Bağlı';
     } else {
+      statusBar.classList.remove('connected');
       statusDot.classList.remove('connected');
       statusText.classList.remove('connected');
-      statusText.textContent = 'Baglanti Yok';
+      statusText.textContent = 'Bağlantı Yok';
     }
   }
 
@@ -116,7 +119,7 @@ document.addEventListener('DOMContentLoaded', () => {
             <line x1="12" y1="8" x2="12" y2="12"/>
             <line x1="12" y1="16" x2="12.01" y2="16"/>
           </svg>
-          <div>Bu site icin kayitli hesap yok</div>
+          <p>Bu site için kayıtlı hesap yok</p>
         </div>
       `;
       return;

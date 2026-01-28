@@ -68,6 +68,8 @@ export interface PasskeyData {
   username?: string;
   email?: string;
   domain?: string;
+  credentialId?: string;
+  backupCodes?: string[];
 }
 
 export interface TotpData {

@@ -4,6 +4,53 @@
   <meta charset="UTF-8">
   <title>ConfPass</title>
   <style>
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap');
+
+    :root {
+      /* Core Backgrounds */
+      --bg-void: #050507;
+      --bg-primary: #0a0a0c;
+      --bg-secondary: #111114;
+      --bg-tertiary: #18181c;
+      --bg-elevated: #1f1f24;
+      --bg-card: rgba(17, 17, 20, 0.85);
+
+      /* Glass Effects */
+      --glass-bg: rgba(17, 17, 20, 0.75);
+      --glass-border: rgba(255, 255, 255, 0.06);
+
+      /* Text Hierarchy */
+      --text-primary: #fafafa;
+      --text-secondary: #a1a1aa;
+      --text-tertiary: #71717a;
+      --text-muted: #52525b;
+
+      /* Accent - Amber Gold */
+      --accent: #f59e0b;
+      --accent-light: #fbbf24;
+      --accent-dark: #d97706;
+      --accent-muted: rgba(245, 158, 11, 0.15);
+      --accent-glow: rgba(245, 158, 11, 0.4);
+      --accent-gradient: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
+
+      /* Status Colors */
+      --success: #10b981;
+      --danger: #ef4444;
+
+      /* Borders */
+      --border: rgba(255, 255, 255, 0.06);
+      --border-hover: rgba(245, 158, 11, 0.3);
+
+      /* Typography */
+      --font-display: 'Sora', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-body: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+
+      /* Radius */
+      --radius-sm: 6px;
+      --radius-md: 10px;
+      --radius-lg: 14px;
+    }
+
     * {
       margin: 0;
       padding: 0;
@@ -11,158 +58,213 @@
     }
 
     body {
-      width: 340px;
+      width: 360px;
       min-height: 200px;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Inter', sans-serif;
-      background: #0f0f0f;
+      font-family: var(--font-body);
+      background: var(--bg-void);
       background-image:
-        radial-gradient(at 0% 0%, rgba(0, 217, 255, 0.08) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, rgba(0, 217, 255, 0.04) 0px, transparent 50%);
-      color: #ffffff;
+        radial-gradient(ellipse 80% 50% at 20% -10%, rgba(245, 158, 11, 0.08) 0%, transparent 50%),
+        radial-gradient(ellipse 60% 40% at 80% 110%, rgba(245, 158, 11, 0.05) 0%, transparent 50%);
+      color: var(--text-primary);
+      -webkit-font-smoothing: antialiased;
     }
 
+    /* Header */
     .header {
       display: flex;
       align-items: center;
       gap: 12px;
-      padding: 16px;
-      background: #1a1a1a;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      padding: 16px 20px;
+      background: linear-gradient(180deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
+      border-bottom: 1px solid var(--border);
+      position: relative;
+    }
+
+    .header::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(245, 158, 11, 0.3), transparent);
     }
 
     .logo {
-      width: 36px;
-      height: 36px;
-      background: linear-gradient(135deg, #00d9ff 0%, #00a8cc 100%);
-      border-radius: 10px;
+      width: 40px;
+      height: 40px;
+      background: var(--accent-gradient);
+      border-radius: var(--radius-md);
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+      box-shadow: 0 4px 16px var(--accent-glow);
     }
 
     .logo svg {
-      width: 20px;
-      height: 20px;
+      width: 22px;
+      height: 22px;
       color: white;
     }
 
     .header-text h1 {
-      font-size: 16px;
-      font-weight: 600;
-      color: #ffffff;
+      font-family: var(--font-display);
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text-primary);
+      letter-spacing: -0.01em;
     }
 
     .header-text p {
       font-size: 11px;
-      color: #707070;
+      color: var(--text-tertiary);
       margin-top: 2px;
+      font-weight: 500;
     }
 
+    /* Status Bar */
     .status-bar {
       display: flex;
       align-items: center;
-      gap: 8px;
-      padding: 10px 16px;
-      background: #1a1a1a;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      gap: 10px;
+      padding: 10px 20px;
+      background: var(--bg-secondary);
+      border-bottom: 1px solid var(--border);
     }
 
     .status-dot {
       width: 8px;
       height: 8px;
       border-radius: 50%;
-      background: #ff4757;
+      background: var(--danger);
+      transition: all 0.3s ease;
     }
 
     .status-dot.connected {
-      background: #00d9ff;
-      box-shadow: 0 0 8px rgba(0, 217, 255, 0.5);
+      background: var(--accent);
+      box-shadow: 0 0 12px var(--accent-glow);
     }
 
     .status-text {
       font-size: 12px;
-      color: #a0a0a0;
+      color: var(--text-tertiary);
+      font-weight: 500;
+      transition: color 0.3s ease;
     }
 
     .status-text.connected {
-      color: #00d9ff;
+      color: var(--accent-light);
     }
 
+    /* Content */
     .content {
-      padding: 16px;
+      padding: 16px 20px;
     }
 
+    /* Site Info Card */
     .site-info {
-      background: #1a1a1a;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 10px;
-      padding: 12px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 14px 16px;
       margin-bottom: 16px;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .site-info::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
     }
 
     .site-info-label {
       font-size: 10px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #707070;
-      margin-bottom: 4px;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 6px;
+      font-weight: 600;
     }
 
     .site-info-value {
       font-size: 13px;
-      color: #ffffff;
+      color: var(--text-primary);
       word-break: break-all;
+      font-weight: 500;
     }
 
+    /* Passwords Section */
     .passwords-section {
       margin-bottom: 16px;
     }
 
     .section-title {
+      font-family: var(--font-display);
       font-size: 11px;
       text-transform: uppercase;
-      letter-spacing: 0.5px;
-      color: #707070;
-      margin-bottom: 8px;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      margin-bottom: 10px;
+      font-weight: 600;
     }
 
     .password-list {
       display: flex;
       flex-direction: column;
       gap: 8px;
-      max-height: 180px;
+      max-height: 200px;
       overflow-y: auto;
     }
 
     .password-item {
       display: flex;
       align-items: center;
-      gap: 10px;
-      padding: 10px 12px;
-      background: #1a1a1a;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      border-radius: 8px;
+      gap: 12px;
+      padding: 12px 14px;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .password-item::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.06), transparent);
     }
 
     .password-item:hover {
-      border-color: rgba(0, 217, 255, 0.3);
-      background: rgba(0, 217, 255, 0.05);
+      border-color: var(--border-hover);
+      background: var(--bg-tertiary);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
     }
 
     .password-item-icon {
-      width: 32px;
-      height: 32px;
-      background: #242424;
-      border-radius: 8px;
+      width: 36px;
+      height: 36px;
+      background: var(--accent-muted);
+      border-radius: var(--radius-sm);
       display: flex;
       align-items: center;
       justify-content: center;
       font-size: 14px;
-      color: #00d9ff;
-      font-weight: 600;
+      color: var(--accent-light);
+      font-weight: 700;
+      font-family: var(--font-display);
+      flex-shrink: 0;
     }
 
     .password-item-info {
@@ -172,8 +274,8 @@
 
     .password-item-title {
       font-size: 13px;
-      font-weight: 500;
-      color: #ffffff;
+      font-weight: 600;
+      color: var(--text-primary);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -181,43 +283,53 @@
 
     .password-item-username {
       font-size: 11px;
-      color: #707070;
+      color: var(--text-tertiary);
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
+      margin-top: 2px;
     }
 
     .password-item-fill {
-      padding: 6px 10px;
-      background: linear-gradient(135deg, #00d9ff 0%, #00a8cc 100%);
+      padding: 8px 14px;
+      background: var(--accent-gradient);
       border: none;
-      border-radius: 6px;
+      border-radius: var(--radius-sm);
       color: white;
       font-size: 11px;
-      font-weight: 500;
+      font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      font-family: var(--font-body);
+      flex-shrink: 0;
     }
 
     .password-item-fill:hover {
       transform: scale(1.05);
-      box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+      box-shadow: 0 4px 16px var(--accent-glow);
     }
 
+    /* No Passwords State */
     .no-passwords {
       text-align: center;
-      padding: 24px 16px;
-      color: #707070;
-      font-size: 13px;
+      padding: 32px 20px;
+      color: var(--text-tertiary);
     }
 
     .no-passwords svg {
-      width: 40px;
-      height: 40px;
-      margin-bottom: 8px;
-      opacity: 0.5;
+      width: 48px;
+      height: 48px;
+      margin-bottom: 12px;
+      opacity: 0.4;
+      color: var(--text-muted);
     }
 
+    .no-passwords p {
+      font-size: 13px;
+      font-weight: 500;
+    }
+
+    /* Action Buttons */
     .actions {
       display: flex;
       flex-direction: column;
@@ -229,85 +341,108 @@
       align-items: center;
       justify-content: center;
       gap: 8px;
-      padding: 12px 16px;
+      padding: 10px 16px;
       border: none;
-      border-radius: 8px;
-      font-size: 13px;
-      font-weight: 500;
+      border-radius: var(--radius-sm);
+      font-size: 12px;
+      font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
+      font-family: var(--font-body);
     }
 
     .btn svg {
-      width: 16px;
-      height: 16px;
+      width: 14px;
+      height: 14px;
     }
 
     .btn-primary {
-      background: linear-gradient(135deg, #00d9ff 0%, #00a8cc 100%);
+      background: var(--accent-gradient);
       color: white;
+      box-shadow: 0 2px 6px rgba(245, 158, 11, 0.15);
     }
 
     .btn-primary:hover {
       transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+      box-shadow: 0 4px 12px rgba(245, 158, 11, 0.25);
     }
 
     .btn-primary:disabled {
-      background: #242424;
-      color: #707070;
+      background: var(--bg-tertiary);
+      color: var(--text-muted);
       cursor: not-allowed;
       transform: none;
       box-shadow: none;
     }
 
     .btn-secondary {
-      background: #1a1a1a;
-      border: 1px solid rgba(255, 255, 255, 0.08);
-      color: #ffffff;
+      background: var(--bg-secondary);
+      border: 1px solid var(--border);
+      color: var(--text-secondary);
     }
 
     .btn-secondary:hover {
-      border-color: rgba(0, 217, 255, 0.3);
-      background: rgba(0, 217, 255, 0.05);
+      border-color: var(--border-hover);
+      background: var(--bg-tertiary);
+      color: var(--text-primary);
     }
 
+    /* State Messages */
     .locked-message {
       text-align: center;
-      padding: 20px;
+      padding: 24px 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
     }
 
-    .locked-message svg {
-      width: 48px;
-      height: 48px;
-      color: #707070;
+    .locked-message svg.state-icon {
+      width: 40px;
+      height: 40px;
+      color: var(--text-muted);
       margin-bottom: 12px;
+      opacity: 0.5;
     }
 
     .locked-message h3 {
+      font-family: var(--font-display);
       font-size: 14px;
-      color: #ffffff;
+      font-weight: 600;
+      color: var(--text-primary);
       margin-bottom: 4px;
     }
 
     .locked-message p {
-      font-size: 12px;
-      color: #707070;
-      margin-bottom: 16px;
+      font-size: 11px;
+      color: var(--text-tertiary);
+      margin-bottom: 14px;
+      line-height: 1.4;
     }
 
+    .btn-small {
+      padding: 8px 14px;
+      font-size: 11px;
+      gap: 6px;
+    }
+
+    .btn-small svg {
+      width: 12px;
+      height: 12px;
+    }
+
+    /* Loading State */
     .loading {
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 40px;
+      padding: 48px;
     }
 
     .spinner {
-      width: 24px;
-      height: 24px;
-      border: 2px solid #242424;
-      border-top-color: #00d9ff;
+      width: 28px;
+      height: 28px;
+      border: 3px solid var(--bg-tertiary);
+      border-top-color: var(--accent);
       border-radius: 50%;
       animation: spin 0.8s linear infinite;
     }
@@ -316,7 +451,7 @@
       to { transform: rotate(360deg); }
     }
 
-    /* Scrollbar styling */
+    /* Scrollbar Styling */
     .password-list::-webkit-scrollbar {
       width: 6px;
     }
@@ -326,30 +461,49 @@
     }
 
     .password-list::-webkit-scrollbar-thumb {
-      background: #333;
+      background: var(--bg-elevated);
       border-radius: 3px;
     }
 
     .password-list::-webkit-scrollbar-thumb:hover {
-      background: #444;
+      background: var(--text-muted);
+    }
+
+    /* Animations */
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .content > * {
+      animation: fadeIn 0.3s ease-out;
+    }
+
+    /* Glow effect for connected state */
+    .status-bar.connected {
+      background: linear-gradient(90deg,
+        var(--bg-secondary),
+        rgba(245, 158, 11, 0.05),
+        var(--bg-secondary)
+      );
     }
   </style>
 </head>
 <body>
   <div class="header">
     <div class="logo">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
         <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
       </svg>
     </div>
     <div class="header-text">
       <h1>ConfPass</h1>
-      <p>Password Manager</p>
+      <p>Şifre Yöneticisi</p>
     </div>
   </div>
 
-  <div class="status-bar">
+  <div id="statusBar" class="status-bar">
     <div id="statusDot" class="status-dot"></div>
     <span id="statusText" class="status-text">Kontrol ediliyor...</span>
   </div>
@@ -360,44 +514,42 @@
     </div>
 
     <div id="lockedState" class="locked-message" style="display: none;">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
         <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
       </svg>
       <h3>Kasa Kilitli</h3>
-      <p>Devam etmek icin uygulamayi acin ve kilidini acin</p>
-      <button id="openAppBtnLocked" class="btn btn-primary">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+      <p>Devam etmek için uygulamayı açın</p>
+      <button id="openAppBtnLocked" class="btn btn-primary btn-small">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
           <polyline points="15 3 21 3 21 9"/>
           <line x1="10" y1="14" x2="21" y2="3"/>
         </svg>
-        Uygulamayi Ac
+        Aç
       </button>
     </div>
 
-    <div id="disconnectedState" style="display: none;">
-      <div class="locked-message">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-          <line x1="1" y1="1" x2="23" y2="23"/>
-          <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
-          <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
-          <path d="M10.71 5.05A16 16 0 0 1 22.58 9"/>
-          <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
-          <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
-          <line x1="12" y1="20" x2="12.01" y2="20"/>
+    <div id="disconnectedState" class="locked-message" style="display: none;">
+      <svg class="state-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="1" y1="1" x2="23" y2="23"/>
+        <path d="M16.72 11.06A10.94 10.94 0 0 1 19 12.55"/>
+        <path d="M5 12.55a10.94 10.94 0 0 1 5.17-2.39"/>
+        <path d="M10.71 5.05A16 16 0 0 1 22.58 9"/>
+        <path d="M1.42 9a15.91 15.91 0 0 1 4.7-2.88"/>
+        <path d="M8.53 16.11a6 6 0 0 1 6.95 0"/>
+        <line x1="12" y1="20" x2="12.01" y2="20"/>
+      </svg>
+      <h3>Bağlantı Yok</h3>
+      <p>Uygulamanın çalıştığından emin olun</p>
+      <button id="openAppBtnDisconnected" class="btn btn-primary btn-small">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+          <polyline points="15 3 21 3 21 9"/>
+          <line x1="10" y1="14" x2="21" y2="3"/>
         </svg>
-        <h3>Baglanti Yok</h3>
-        <p>ConfPass uygulamasina baglanilamiyor</p>
-        <button id="openAppBtnDisconnected" class="btn btn-primary">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-            <polyline points="15 3 21 3 21 9"/>
-            <line x1="10" y1="14" x2="21" y2="3"/>
-          </svg>
-          Uygulamayi Ac
-        </button>
-      </div>
+        Aç
+      </button>
     </div>
 
     <div id="mainContent" style="display: none;">
@@ -407,18 +559,18 @@
       </div>
 
       <div id="passwordsSection" class="passwords-section">
-        <div class="section-title">Kayitli Hesaplar</div>
+        <div class="section-title">Kayıtlı Hesaplar</div>
         <div id="passwordList" class="password-list"></div>
       </div>
 
       <div class="actions">
         <button id="openAppBtn" class="btn btn-secondary">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
             <polyline points="15 3 21 3 21 9"/>
             <line x1="10" y1="14" x2="21" y2="3"/>
           </svg>
-          Uygulamayi Ac
+          Uygulamayı Aç
         </button>
       </div>
     </div>

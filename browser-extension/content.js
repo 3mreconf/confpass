@@ -9,7 +9,7 @@
 
   console.log('[ConfPass Content] Content script loaded');
 
-  // ========== Inject Styles ==========
+  // ========== Inject Styles - Amber Gold Theme ==========
   const styles = `
     .confpass-icon-btn {
       position: absolute !important;
@@ -18,7 +18,7 @@
       transform: translateY(-50%) !important;
       width: 24px !important;
       height: 24px !important;
-      background: linear-gradient(135deg, #00d9ff 0%, #00a8cc 100%) !important;
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%) !important;
       border: none !important;
       border-radius: 6px !important;
       cursor: pointer !important;
@@ -28,15 +28,15 @@
       z-index: 2147483646 !important;
       padding: 0 !important;
       margin: 0 !important;
-      box-shadow: 0 2px 8px rgba(0, 217, 255, 0.3) !important;
-      transition: all 0.2s ease !important;
-      opacity: 0.9 !important;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.35) !important;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+      opacity: 0.95 !important;
     }
 
     .confpass-icon-btn:hover {
       transform: translateY(-50%) scale(1.1) !important;
       opacity: 1 !important;
-      box-shadow: 0 4px 12px rgba(0, 217, 255, 0.4) !important;
+      box-shadow: 0 4px 16px rgba(245, 158, 11, 0.5) !important;
     }
 
     .confpass-icon-btn svg {
@@ -53,32 +53,43 @@
       right: 0 !important;
       width: 280px !important;
       max-height: 300px !important;
-      background: #1a1a1a !important;
-      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      background: #0a0a0c !important;
+      border: 1px solid rgba(255, 255, 255, 0.06) !important;
       border-radius: 12px !important;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5) !important;
+      box-shadow: 0 12px 48px rgba(0, 0, 0, 0.6), 0 0 0 1px rgba(245, 158, 11, 0.1) !important;
       z-index: 2147483647 !important;
       overflow: hidden !important;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+    }
+
+    .confpass-dropdown::before {
+      content: '' !important;
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      height: 1px !important;
+      background: linear-gradient(90deg, transparent, rgba(245, 158, 11, 0.4), transparent) !important;
     }
 
     .confpass-dropdown-header {
       display: flex !important;
       align-items: center !important;
-      gap: 8px !important;
-      padding: 12px !important;
-      background: #242424 !important;
-      border-bottom: 1px solid rgba(255, 255, 255, 0.08) !important;
+      gap: 10px !important;
+      padding: 12px 14px !important;
+      background: linear-gradient(180deg, #111114 0%, #0a0a0c 100%) !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
     }
 
     .confpass-dropdown-logo {
-      width: 24px !important;
-      height: 24px !important;
-      background: linear-gradient(135deg, #00d9ff 0%, #00a8cc 100%) !important;
-      border-radius: 6px !important;
+      width: 26px !important;
+      height: 26px !important;
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%) !important;
+      border-radius: 7px !important;
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3) !important;
     }
 
     .confpass-dropdown-logo svg {
@@ -90,10 +101,11 @@
 
     .confpass-dropdown-title {
       font-size: 13px !important;
-      font-weight: 600 !important;
-      color: #ffffff !important;
+      font-weight: 700 !important;
+      color: #fafafa !important;
       margin: 0 !important;
       padding: 0 !important;
+      letter-spacing: -0.01em !important;
     }
 
     .confpass-dropdown-list {
@@ -109,16 +121,17 @@
       padding: 10px !important;
       border-radius: 8px !important;
       cursor: pointer !important;
-      transition: all 0.15s ease !important;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
       margin-bottom: 4px !important;
       background: transparent !important;
-      border: none !important;
+      border: 1px solid transparent !important;
       width: 100% !important;
       text-align: left !important;
     }
 
     .confpass-dropdown-item:hover {
-      background: rgba(0, 217, 255, 0.1) !important;
+      background: rgba(245, 158, 11, 0.08) !important;
+      border-color: rgba(245, 158, 11, 0.2) !important;
     }
 
     .confpass-dropdown-item:last-child {
@@ -129,14 +142,14 @@
       width: 32px !important;
       height: 32px !important;
       min-width: 32px !important;
-      background: #333 !important;
+      background: rgba(245, 158, 11, 0.15) !important;
       border-radius: 8px !important;
       display: flex !important;
       align-items: center !important;
       justify-content: center !important;
-      font-size: 14px !important;
-      font-weight: 600 !important;
-      color: #00d9ff !important;
+      font-size: 13px !important;
+      font-weight: 700 !important;
+      color: #fbbf24 !important;
     }
 
     .confpass-dropdown-item-info {
@@ -146,8 +159,8 @@
 
     .confpass-dropdown-item-title {
       font-size: 13px !important;
-      font-weight: 500 !important;
-      color: #ffffff !important;
+      font-weight: 600 !important;
+      color: #fafafa !important;
       margin: 0 0 2px 0 !important;
       padding: 0 !important;
       white-space: nowrap !important;
@@ -157,7 +170,7 @@
 
     .confpass-dropdown-item-username {
       font-size: 11px !important;
-      color: #888 !important;
+      color: #71717a !important;
       margin: 0 !important;
       padding: 0 !important;
       white-space: nowrap !important;
@@ -168,16 +181,16 @@
     .confpass-dropdown-empty {
       padding: 24px 16px !important;
       text-align: center !important;
-      color: #666 !important;
-      font-size: 13px !important;
+      color: #52525b !important;
+      font-size: 12px !important;
     }
 
     .confpass-dropdown-empty svg {
-      width: 32px !important;
-      height: 32px !important;
+      width: 28px !important;
+      height: 28px !important;
       margin-bottom: 8px !important;
-      opacity: 0.5 !important;
-      stroke: #666 !important;
+      opacity: 0.4 !important;
+      stroke: #52525b !important;
     }
 
     .confpass-dropdown-locked {
@@ -186,15 +199,16 @@
     }
 
     .confpass-dropdown-locked svg {
-      width: 32px !important;
-      height: 32px !important;
+      width: 28px !important;
+      height: 28px !important;
       margin-bottom: 8px !important;
-      stroke: #666 !important;
+      stroke: #52525b !important;
+      opacity: 0.5 !important;
     }
 
     .confpass-dropdown-locked-text {
-      color: #888 !important;
-      font-size: 13px !important;
+      color: #71717a !important;
+      font-size: 12px !important;
       margin-bottom: 12px !important;
     }
 
@@ -202,24 +216,25 @@
       display: inline-flex !important;
       align-items: center !important;
       gap: 6px !important;
-      padding: 8px 16px !important;
-      background: linear-gradient(135deg, #00d9ff 0%, #00a8cc 100%) !important;
+      padding: 8px 14px !important;
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%) !important;
       border: none !important;
       border-radius: 6px !important;
       color: white !important;
-      font-size: 12px !important;
-      font-weight: 500 !important;
+      font-size: 11px !important;
+      font-weight: 600 !important;
       cursor: pointer !important;
-      transition: all 0.2s !important;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.25) !important;
     }
 
     .confpass-dropdown-btn:hover {
-      transform: scale(1.02) !important;
-      box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3) !important;
+      transform: translateY(-1px) !important;
+      box-shadow: 0 4px 16px rgba(245, 158, 11, 0.4) !important;
     }
 
     .confpass-dropdown-list::-webkit-scrollbar {
-      width: 6px !important;
+      width: 5px !important;
     }
 
     .confpass-dropdown-list::-webkit-scrollbar-track {
@@ -227,8 +242,12 @@
     }
 
     .confpass-dropdown-list::-webkit-scrollbar-thumb {
-      background: #444 !important;
+      background: #333 !important;
       border-radius: 3px !important;
+    }
+
+    .confpass-dropdown-list::-webkit-scrollbar-thumb:hover {
+      background: #444 !important;
     }
   `;
 
@@ -681,141 +700,175 @@
     });
   }
 
-  // Passkey dialog styles (included from original)
+  // Passkey dialog styles - Amber Gold theme
   const passkeyDialogStyles = `
+    @import url('https://fonts.googleapis.com/css2?family=Sora:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600&display=swap');
     .confpass-overlay {
       position: fixed;
       top: 0;
       left: 0;
       width: 100%;
       height: 100%;
-      background: rgba(0, 0, 0, 0.6);
+      background: rgba(5, 5, 7, 0.85);
+      backdrop-filter: blur(8px);
       z-index: 2147483647;
       display: flex;
       align-items: center;
       justify-content: center;
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
     }
     .confpass-passkey-dialog {
-      background: #1a1a1a;
-      border: 1px solid rgba(255, 255, 255, 0.1);
+      background: #0a0a0c;
+      border: 1px solid rgba(255, 255, 255, 0.06);
       border-radius: 16px;
       padding: 24px;
-      max-width: 400px;
+      max-width: 380px;
       width: 90%;
-      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
-      color: #ffffff;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7), 0 0 60px rgba(245, 158, 11, 0.1);
+      color: #fafafa;
+      position: relative;
+      overflow: hidden;
+    }
+    .confpass-passkey-dialog::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(245, 158, 11, 0.4), transparent);
     }
     .confpass-passkey-dialog h2 {
-      margin: 0 0 8px 0;
-      font-size: 18px;
-      color: #ffffff;
+      margin: 0 0 6px 0;
+      font-family: 'Sora', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      color: #fafafa;
       display: flex;
       align-items: center;
       gap: 10px;
     }
     .confpass-passkey-dialog .subtitle {
-      color: #888;
-      font-size: 13px;
-      margin-bottom: 20px;
+      color: #71717a;
+      font-size: 12px;
+      margin-bottom: 18px;
     }
     .confpass-passkey-dialog .site-info {
-      background: #242424;
-      padding: 12px;
+      background: #111114;
+      padding: 12px 14px;
       border-radius: 10px;
-      margin-bottom: 20px;
-      border: 1px solid rgba(255, 255, 255, 0.08);
+      margin-bottom: 18px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
     }
     .confpass-passkey-dialog .site-info div {
-      margin: 4px 0;
-      font-size: 13px;
-      color: #ccc;
+      margin: 3px 0;
+      font-size: 12px;
+      color: #a1a1aa;
     }
     .confpass-passkey-dialog .site-info strong {
-      color: #ffffff;
+      color: #fafafa;
     }
     .confpass-passkey-dialog .buttons {
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 8px;
     }
     .confpass-passkey-dialog button {
-      padding: 14px 20px;
-      border-radius: 10px;
-      font-size: 14px;
-      font-weight: 500;
+      padding: 12px 18px;
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 600;
       cursor: pointer;
-      transition: all 0.2s;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1);
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 10px;
+      gap: 8px;
       border: none;
+      font-family: 'Plus Jakarta Sans', sans-serif;
     }
     .confpass-passkey-dialog .primary-btn {
-      background: linear-gradient(135deg, #00d9ff 0%, #00a8cc 100%);
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
       color: white;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.25);
     }
     .confpass-passkey-dialog .primary-btn:hover {
       transform: translateY(-1px);
-      box-shadow: 0 4px 12px rgba(0, 217, 255, 0.3);
+      box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4);
     }
     .confpass-passkey-dialog .secondary-btn {
-      background: #333;
-      color: #ffffff;
+      background: #18181c;
+      color: #a1a1aa;
+      border: 1px solid rgba(255, 255, 255, 0.06);
     }
     .confpass-passkey-dialog .secondary-btn:hover {
-      background: #444;
+      background: #1f1f24;
+      color: #fafafa;
+      border-color: rgba(245, 158, 11, 0.3);
     }
     .confpass-passkey-dialog .cancel-btn {
       background: transparent;
-      color: #888;
-      border: 1px solid #333;
+      color: #71717a;
+      border: 1px solid rgba(255, 255, 255, 0.06);
     }
     .confpass-passkey-dialog .cancel-btn:hover {
-      background: rgba(255, 255, 255, 0.05);
+      background: rgba(255, 255, 255, 0.03);
+      color: #a1a1aa;
     }
     .confpass-passkey-dialog .passkey-list {
-      max-height: 200px;
+      max-height: 180px;
       overflow-y: auto;
-      margin-bottom: 15px;
+      margin-bottom: 12px;
+    }
+    .confpass-passkey-dialog .passkey-list::-webkit-scrollbar {
+      width: 5px;
+    }
+    .confpass-passkey-dialog .passkey-list::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    .confpass-passkey-dialog .passkey-list::-webkit-scrollbar-thumb {
+      background: #333;
+      border-radius: 3px;
     }
     .confpass-passkey-dialog .passkey-item {
-      padding: 12px;
-      border: 2px solid #333;
-      border-radius: 10px;
-      margin-bottom: 8px;
+      padding: 10px 12px;
+      border: 1px solid rgba(255, 255, 255, 0.06);
+      border-radius: 8px;
+      margin-bottom: 6px;
       cursor: pointer;
       transition: all 0.2s;
-      background: #242424;
+      background: #111114;
     }
     .confpass-passkey-dialog .passkey-item:hover {
-      border-color: rgba(0, 217, 255, 0.3);
-      background: rgba(0, 217, 255, 0.05);
+      border-color: rgba(245, 158, 11, 0.3);
+      background: rgba(245, 158, 11, 0.05);
     }
     .confpass-passkey-dialog .passkey-item.selected {
-      border-color: #00d9ff;
-      background: rgba(0, 217, 255, 0.1);
+      border-color: #f59e0b;
+      background: rgba(245, 158, 11, 0.1);
     }
     .confpass-passkey-dialog .passkey-item .username {
       font-weight: 600;
-      color: #ffffff;
+      color: #fafafa;
+      font-size: 13px;
     }
     .confpass-passkey-dialog .passkey-item .domain {
-      font-size: 12px;
-      color: #888;
+      font-size: 11px;
+      color: #71717a;
+      margin-top: 2px;
     }
     .confpass-pk-logo {
       width: 32px;
       height: 32px;
-      background: linear-gradient(135deg, #00d9ff 0%, #00a8cc 100%);
-      border-radius: 10px;
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%);
+      border-radius: 8px;
       display: flex;
       align-items: center;
       justify-content: center;
       color: white;
       font-weight: bold;
-      font-size: 16px;
+      font-size: 14px;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
     }
   `;
 
@@ -835,23 +888,31 @@
       overlay.innerHTML = `
         <div class="confpass-passkey-dialog">
           <h2>
-            <div class="confpass-pk-logo">C</div>
-            Gecis Anahtari Olustur
+            <div class="confpass-pk-logo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+              </svg>
+            </div>
+            Geçiş Anahtarı Oluştur
           </h2>
-          <p class="subtitle">${data.rpName || data.rpId} icin yeni bir gecis anahtari olusturuluyor</p>
+          <p class="subtitle">${data.rpName || data.rpId} için yeni bir geçiş anahtarı oluşturuluyor</p>
           <div class="site-info">
             <div><strong>Site:</strong> ${data.rpId}</div>
-            <div><strong>Kullanici:</strong> ${data.userName}</div>
+            <div><strong>Kullanıcı:</strong> ${data.userName}</div>
             ${data.userDisplayName ? `<div><strong>Ad:</strong> ${data.userDisplayName}</div>` : ''}
           </div>
           <div class="buttons">
             <button class="primary-btn" id="confpass-pk-use">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+              </svg>
               ConfPass ile Kaydet
             </button>
             <button class="secondary-btn" id="confpass-pk-system">
-              Sistem Dogrulayicisini Kullan
+              Sistem Doğrulayıcısını Kullan
             </button>
-            <button class="cancel-btn" id="confpass-pk-cancel">Iptal</button>
+            <button class="cancel-btn" id="confpass-pk-cancel">İptal</button>
           </div>
         </div>
       `;
@@ -896,7 +957,7 @@
           <div class="passkey-list">
             ${passkeys.map((pk, i) => `
               <div class="passkey-item ${i === 0 ? 'selected' : ''}" data-index="${i}">
-                <div class="username">${pk.userName || pk.userDisplayName || 'Kullanici'}</div>
+                <div class="username">${pk.userName || pk.userDisplayName || 'Kullanıcı'}</div>
                 <div class="domain">${pk.rpId}</div>
               </div>
             `).join('')}
@@ -907,21 +968,30 @@
       overlay.innerHTML = `
         <div class="confpass-passkey-dialog">
           <h2>
-            <div class="confpass-pk-logo">C</div>
-            Gecis Anahtari ile Giris
+            <div class="confpass-pk-logo">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/>
+              </svg>
+            </div>
+            Geçiş Anahtarı ile Giriş
           </h2>
-          <p class="subtitle">${data.rpId} sitesine giris yapiliyor</p>
-          ${hasPasskeys ? passkeyListHTML : '<p style="color: #888; text-align: center; padding: 20px;">Bu site icin kayitli gecis anahtari bulunamadi.</p>'}
+          <p class="subtitle">${data.rpId} sitesine giriş yapılıyor</p>
+          ${hasPasskeys ? passkeyListHTML : '<p style="color: #71717a; text-align: center; padding: 16px; font-size: 12px;">Bu site için kayıtlı geçiş anahtarı bulunamadı.</p>'}
           <div class="buttons">
             ${hasPasskeys ? `
               <button class="primary-btn" id="confpass-pk-use">
-                ConfPass ile Giris Yap
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/>
+                  <polyline points="10 17 15 12 10 7"/>
+                  <line x1="15" y1="12" x2="3" y2="12"/>
+                </svg>
+                Giriş Yap
               </button>
             ` : ''}
             <button class="secondary-btn" id="confpass-pk-system">
-              Sistem Dogrulayicisini Kullan
+              Sistem Doğrulayıcısını Kullan
             </button>
-            <button class="cancel-btn" id="confpass-pk-cancel">Iptal</button>
+            <button class="cancel-btn" id="confpass-pk-cancel">İptal</button>
           </div>
         </div>
       `;
@@ -1112,7 +1182,13 @@
       to { transform: translateX(0); opacity: 1; }
     }
   `;
-  document.head.appendChild(totpNotificationStyle);
+  if (document.head) {
+    document.head.appendChild(totpNotificationStyle);
+  } else {
+    document.addEventListener('DOMContentLoaded', () => {
+      document.head.appendChild(totpNotificationStyle);
+    });
+  }
 
   function scanForTotpFields() {
     const totpFields = findTotpFields();

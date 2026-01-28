@@ -1,6 +1,6 @@
 import { useState, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Copy, Trash2, KeyRound, Search, RotateCcw, Trash, Globe, User, Mail, HelpCircle, X, Shield, Chrome } from 'lucide-react';
+import { Copy, Trash2, KeyRound, Search, RotateCcw, Trash, Globe, User, Mail, HelpCircle, X, Shield, Chrome, ChevronDown, ChevronUp, FileText, Save } from 'lucide-react';
 import type { PasswordEntry, PasskeyData } from '../types';
 
 interface PasskeysViewProps {
@@ -27,6 +27,9 @@ export default function PasskeysView({
   const [viewMode, setViewMode] = useState<ViewMode>('active');
   const [copiedId, setCopiedId] = useState<string | null>(null);
   const [showHelp, setShowHelp] = useState(false);
+  const [expandedCards, setExpandedCards] = useState<Set<string>>(new Set());
+  const [showBackupModal, setShowBackupModal] = useState<{ entry: PasswordEntry; data: PasskeyData } | null>(null);
+  const [backupCodesInput, setBackupCodesInput] = useState('');
 
   // Parse passkey entries
   const parsePasskeys = useCallback((): { active: PasskeyItem[]; trashed: PasskeyItem[] } => {
@@ -79,6 +82,61 @@ export default function PasskeysView({
       setTimeout(() => setCopiedId(null), 2000);
     } catch {
       showToast('Kopyalama başarısız', 'error');
+    }
+  };
+
+  // Toggle card expansion
+  const toggleCardExpansion = (id: string) => {
+    setExpandedCards(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  // Open backup codes modal
+  const openBackupModal = (entry: PasswordEntry, data: PasskeyData) => {
+    setBackupCodesInput(data.backupCodes?.join('\n') || '');
+    setShowBackupModal({ entry, data });
+  };
+
+  // Save backup codes
+  const handleSaveBackupCodes = async () => {
+    if (!showBackupModal) return;
+
+    const codes = backupCodesInput
+      .split('\n')
+      .map(c => c.trim())
+      .filter(c => c.length > 0);
+
+    try {
+      // Update the entry notes with backup codes
+      const entry = showBackupModal.entry;
+      let notesData: PasskeyData = showBackupModal.data;
+      notesData.backupCodes = codes;
+
+      const updatedNotes = JSON.stringify(notesData);
+
+      await invoke('update_password_entry', {
+        id: entry.id,
+        title: entry.title,
+        username: entry.username,
+        password: entry.password,
+        url: entry.url || '',
+        notes: updatedNotes,
+        category: entry.category
+      });
+
+      await loadEntries();
+      showToast(`${codes.length} yedek kod kaydedildi`, 'success');
+      setShowBackupModal(null);
+      setBackupCodesInput('');
+    } catch (err) {
+      showToast('Yedek kodlar kaydedilemedi: ' + String(err), 'error');
     }
   };
 
@@ -267,73 +325,132 @@ export default function PasskeysView({
             )}
           </div>
         ) : (
-          currentItems.map((item) => (
-            <div
-              key={item.entry.id}
-              className={`passkey-card ${copiedId === item.entry.id ? 'copied' : ''} ${viewMode === 'trash' ? 'trashed' : ''}`}
-            >
-              <div className="passkey-card-icon">
-                <KeyRound size={24} />
-              </div>
-              <div className="passkey-card-info">
-                <div className="passkey-card-title">{item.entry.title}</div>
-                {item.data.domain && (
-                  <div className="passkey-card-detail">
-                    <Globe size={14} />
-                    <span>{item.data.domain}</span>
+          currentItems.map((item) => {
+            const isExpanded = expandedCards.has(item.entry.id);
+            const hasBackupCodes = item.data.backupCodes && item.data.backupCodes.length > 0;
+
+            return (
+              <div
+                key={item.entry.id}
+                className={`passkey-card ${copiedId === item.entry.id ? 'copied' : ''} ${viewMode === 'trash' ? 'trashed' : ''} ${isExpanded ? 'expanded' : ''}`}
+              >
+                <div className="passkey-card-main">
+                  <div className="passkey-card-icon">
+                    <KeyRound size={24} />
+                  </div>
+                  <div className="passkey-card-info">
+                    <div className="passkey-card-title">{item.entry.title}</div>
+                    {item.data.domain && (
+                      <div className="passkey-card-detail">
+                        <Globe size={14} />
+                        <span>{item.data.domain}</span>
+                      </div>
+                    )}
+                    {item.data.username && (
+                      <div className="passkey-card-detail">
+                        <User size={14} />
+                        <span>{item.data.username}</span>
+                      </div>
+                    )}
+                    {item.data.email && (
+                      <div className="passkey-card-detail">
+                        <Mail size={14} />
+                        <span>{item.data.email}</span>
+                      </div>
+                    )}
+                    {hasBackupCodes && (
+                      <div className="passkey-card-detail backup-badge">
+                        <FileText size={14} />
+                        <span>{item.data.backupCodes!.length} yedek kod</span>
+                      </div>
+                    )}
+                  </div>
+                  <div className="passkey-card-actions">
+                    {item.data.username && (
+                      <button
+                        onClick={() => handleCopy(item.data.username!, item.entry.id, 'Kullanıcı adı')}
+                        title="Kullanıcı Adı Kopyala"
+                      >
+                        <Copy size={16} />
+                      </button>
+                    )}
+                    {viewMode === 'active' && (
+                      <button
+                        onClick={() => openBackupModal(item.entry, item.data)}
+                        className="backup-btn"
+                        title="Yedek Kodlar"
+                      >
+                        <FileText size={16} />
+                      </button>
+                    )}
+                    {hasBackupCodes && (
+                      <button
+                        onClick={() => toggleCardExpansion(item.entry.id)}
+                        className="expand-btn"
+                        title={isExpanded ? 'Daralt' : 'Genişlet'}
+                      >
+                        {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                      </button>
+                    )}
+                    {viewMode === 'trash' ? (
+                      <>
+                        <button
+                          onClick={() => handleRestore(item.entry)}
+                          className="restore-btn"
+                          title="Geri Yükle"
+                        >
+                          <RotateCcw size={16} />
+                        </button>
+                        <button
+                          onClick={() => handlePermanentDelete(item.entry)}
+                          className="delete-btn permanent"
+                          title="Kalıcı Sil"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </>
+                    ) : (
+                      <button
+                        onClick={() => handleSoftDelete(item.entry)}
+                        className="delete-btn"
+                        title="Çöp Kutusuna Taşı"
+                      >
+                        <Trash2 size={16} />
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {isExpanded && hasBackupCodes && (
+                  <div className="passkey-backup-codes">
+                    <div className="backup-codes-header">
+                      <FileText size={16} />
+                      <span>Yedek Kodlar</span>
+                      <button
+                        className="copy-all-btn"
+                        onClick={() => handleCopy(item.data.backupCodes!.join('\n'), item.entry.id + '-backup', 'Tüm yedek kodlar')}
+                      >
+                        <Copy size={14} />
+                        Tümünü Kopyala
+                      </button>
+                    </div>
+                    <div className="backup-codes-grid">
+                      {item.data.backupCodes!.map((code, idx) => (
+                        <div
+                          key={idx}
+                          className="backup-code-item"
+                          onClick={() => handleCopy(code, item.entry.id + '-code-' + idx, 'Yedek kod')}
+                        >
+                          <span className="code-number">{idx + 1}</span>
+                          <span className="code-value">{code}</span>
+                          <Copy size={12} className="code-copy-icon" />
+                        </div>
+                      ))}
+                    </div>
                   </div>
                 )}
-                {item.data.username && (
-                  <div className="passkey-card-detail">
-                    <User size={14} />
-                    <span>{item.data.username}</span>
-                  </div>
-                )}
-                {item.data.email && (
-                  <div className="passkey-card-detail">
-                    <Mail size={14} />
-                    <span>{item.data.email}</span>
-                  </div>
-                )}
               </div>
-              <div className="passkey-card-actions">
-                {item.data.username && (
-                  <button
-                    onClick={() => handleCopy(item.data.username!, item.entry.id, 'Kullanıcı adı')}
-                    title="Kullanıcı Adı Kopyala"
-                  >
-                    <Copy size={16} />
-                  </button>
-                )}
-                {viewMode === 'trash' ? (
-                  <>
-                    <button
-                      onClick={() => handleRestore(item.entry)}
-                      className="restore-btn"
-                      title="Geri Yükle"
-                    >
-                      <RotateCcw size={16} />
-                    </button>
-                    <button
-                      onClick={() => handlePermanentDelete(item.entry)}
-                      className="delete-btn permanent"
-                      title="Kalıcı Sil"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </>
-                ) : (
-                  <button
-                    onClick={() => handleSoftDelete(item.entry)}
-                    className="delete-btn"
-                    title="Çöp Kutusuna Taşı"
-                  >
-                    <Trash2 size={16} />
-                  </button>
-                )}
-              </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
 
@@ -401,6 +518,51 @@ export default function PasskeysView({
             <div className="modal-footer">
               <button className="btn-primary" onClick={() => setShowHelp(false)}>
                 Anlaşıldı
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showBackupModal && (
+        <div className="modal-overlay" onClick={() => setShowBackupModal(null)}>
+          <div className="modal-content backup-modal" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-header">
+              <div className="modal-title-wrapper">
+                <FileText size={24} style={{ color: 'var(--accent)' }} />
+                <div>
+                  <h2>Yedek Kodlar</h2>
+                  <p className="modal-subtitle">{showBackupModal.entry.title}</p>
+                </div>
+              </div>
+              <button className="modal-close-btn" onClick={() => setShowBackupModal(null)}>
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="backup-modal-content">
+              <p className="backup-description">
+                Yedek kodlarınızı her satıra bir kod gelecek şekilde yapıştırın.
+                Bu kodlar geçiş anahtarınızı kaybettiğinizde hesabınıza erişmenizi sağlar.
+              </p>
+              <textarea
+                value={backupCodesInput}
+                onChange={(e) => setBackupCodesInput(e.target.value)}
+                placeholder="Yedek kodlarınızı buraya yapıştırın...&#10;Her satıra bir kod&#10;Örnek:&#10;ABCD-1234-EFGH&#10;IJKL-5678-MNOP"
+                rows={8}
+              />
+              <div className="backup-stats">
+                <span>{backupCodesInput.split('\n').filter(c => c.trim()).length} kod girildi</span>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button className="btn-secondary" onClick={() => setShowBackupModal(null)}>
+                İptal
+              </button>
+              <button className="btn-primary" onClick={handleSaveBackupCodes}>
+                <Save size={16} />
+                Kaydet
               </button>
             </div>
           </div>
@@ -709,17 +871,15 @@ export default function PasskeysView({
 
         .passkey-card {
           display: flex;
-          align-items: center;
-          gap: 1rem;
-          padding: 1.25rem;
+          flex-direction: column;
           background: linear-gradient(145deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
           border: 1px solid var(--border);
           border-radius: 16px;
           transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+          overflow: hidden;
         }
 
         .passkey-card:hover {
-          transform: translateY(-2px);
           border-color: rgba(245, 158, 11, 0.3);
           box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3), 0 0 30px rgba(245, 158, 11, 0.1);
         }
@@ -737,6 +897,17 @@ export default function PasskeysView({
         .passkey-card.trashed .passkey-card-icon {
           background: rgba(245, 158, 11, 0.15);
           color: #f59e0b;
+        }
+
+        .passkey-card.expanded {
+          border-color: rgba(245, 158, 11, 0.3);
+        }
+
+        .passkey-card-main {
+          display: flex;
+          align-items: center;
+          gap: 1rem;
+          padding: 1.25rem;
         }
 
         .passkey-card-icon {
@@ -781,6 +952,14 @@ export default function PasskeysView({
           color: var(--text-tertiary);
         }
 
+        .passkey-card-detail.backup-badge {
+          color: var(--accent);
+        }
+
+        .passkey-card-detail.backup-badge svg {
+          color: var(--accent);
+        }
+
         .passkey-card-actions {
           display: flex;
           align-items: center;
@@ -807,6 +986,18 @@ export default function PasskeysView({
           color: var(--text-primary);
         }
 
+        .backup-btn:hover {
+          background: rgba(245, 158, 11, 0.15) !important;
+          border-color: rgba(245, 158, 11, 0.3) !important;
+          color: var(--accent) !important;
+        }
+
+        .expand-btn:hover {
+          background: rgba(245, 158, 11, 0.15) !important;
+          border-color: rgba(245, 158, 11, 0.3) !important;
+          color: var(--accent) !important;
+        }
+
         .restore-btn:hover {
           background: rgba(16, 185, 129, 0.15) !important;
           border-color: rgba(16, 185, 129, 0.3) !important;
@@ -823,6 +1014,182 @@ export default function PasskeysView({
           background: #ef4444 !important;
           border-color: #ef4444 !important;
           color: white !important;
+        }
+
+        /* Backup Codes Section */
+        .passkey-backup-codes {
+          padding: 1rem 1.25rem 1.25rem;
+          background: var(--bg-primary);
+          border-top: 1px solid var(--border);
+          animation: slideDown 0.2s ease;
+        }
+
+        @keyframes slideDown {
+          from {
+            opacity: 0;
+            transform: translateY(-10px);
+          }
+          to {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+
+        .backup-codes-header {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          margin-bottom: 0.75rem;
+          color: var(--text-secondary);
+          font-size: 0.85rem;
+          font-weight: 500;
+        }
+
+        .backup-codes-header svg {
+          color: var(--accent);
+        }
+
+        .copy-all-btn {
+          margin-left: auto;
+          display: flex;
+          align-items: center;
+          gap: 0.4rem;
+          padding: 0.4rem 0.75rem;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 6px;
+          color: var(--text-secondary);
+          font-size: 0.75rem;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .copy-all-btn:hover {
+          background: var(--accent);
+          border-color: var(--accent);
+          color: white;
+        }
+
+        .backup-codes-grid {
+          display: grid;
+          grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+          gap: 0.5rem;
+        }
+
+        .backup-code-item {
+          display: flex;
+          align-items: center;
+          gap: 0.5rem;
+          padding: 0.6rem 0.75rem;
+          background: var(--bg-secondary);
+          border: 1px solid var(--border);
+          border-radius: 8px;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .backup-code-item:hover {
+          background: var(--bg-tertiary);
+          border-color: rgba(245, 158, 11, 0.3);
+        }
+
+        .code-number {
+          width: 18px;
+          height: 18px;
+          border-radius: 4px;
+          background: var(--accent-muted);
+          color: var(--accent);
+          font-size: 0.65rem;
+          font-weight: 700;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+        }
+
+        .code-value {
+          flex: 1;
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.8rem;
+          color: var(--text-primary);
+          letter-spacing: 0.02em;
+        }
+
+        .code-copy-icon {
+          color: var(--text-tertiary);
+          opacity: 0;
+          transition: opacity 0.2s ease;
+        }
+
+        .backup-code-item:hover .code-copy-icon {
+          opacity: 1;
+        }
+
+        /* Backup Modal */
+        .backup-modal {
+          max-width: 480px;
+        }
+
+        .modal-subtitle {
+          font-size: 0.85rem;
+          color: var(--text-tertiary);
+          margin: 0;
+        }
+
+        .backup-modal-content {
+          margin-bottom: 1.5rem;
+        }
+
+        .backup-description {
+          font-size: 0.9rem;
+          color: var(--text-secondary);
+          line-height: 1.6;
+          margin: 0 0 1rem 0;
+        }
+
+        .backup-modal-content textarea {
+          width: 100%;
+          padding: 1rem;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 12px;
+          color: var(--text-primary);
+          font-family: 'JetBrains Mono', monospace;
+          font-size: 0.9rem;
+          line-height: 1.6;
+          resize: vertical;
+          transition: all 0.2s ease;
+        }
+
+        .backup-modal-content textarea:focus {
+          outline: none;
+          border-color: var(--accent);
+          box-shadow: 0 0 0 3px rgba(245, 158, 11, 0.15);
+        }
+
+        .backup-modal-content textarea::placeholder {
+          color: var(--text-tertiary);
+        }
+
+        .backup-stats {
+          margin-top: 0.75rem;
+          font-size: 0.85rem;
+          color: var(--text-tertiary);
+        }
+
+        .btn-secondary {
+          padding: 0.75rem 1.25rem;
+          background: var(--bg-tertiary);
+          border: 1px solid var(--border);
+          border-radius: 10px;
+          color: var(--text-secondary);
+          font-weight: 500;
+          cursor: pointer;
+          transition: all 0.2s ease;
+        }
+
+        .btn-secondary:hover {
+          background: var(--bg-elevated);
+          color: var(--text-primary);
         }
 
         @media (max-width: 768px) {
@@ -846,7 +1213,7 @@ export default function PasskeysView({
             padding: 1rem;
           }
 
-          .passkey-card {
+          .passkey-card-main {
             flex-wrap: wrap;
             padding: 1rem;
           }
@@ -856,6 +1223,10 @@ export default function PasskeysView({
             justify-content: flex-end;
             margin-top: 0.75rem;
             padding-top: 0.75rem;
+
+          .backup-codes-grid {
+            grid-template-columns: 1fr;
+          }
             border-top: 1px solid var(--border);
           }
         }

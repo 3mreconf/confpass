@@ -1115,11 +1115,31 @@ fn find_password_by_url(url: String) -> Result<Option<PasswordEntry>, String> {
 }
 
 fn extract_domain(url: &str) -> Option<String> {
-    url.strip_prefix("http://")
+    let url = url.trim();
+    if url.is_empty() {
+        return None;
+    }
+
+    // Remove protocol prefix if present
+    let without_protocol = url.strip_prefix("http://")
         .or_else(|| url.strip_prefix("https://"))
-        .or_else(|| url.strip_prefix("www."))
-        .and_then(|s| s.split('/').next())
-        .map(|s| s.to_lowercase())
+        .unwrap_or(url);
+
+    // Remove www. prefix if present
+    let without_www = without_protocol.strip_prefix("www.")
+        .unwrap_or(without_protocol);
+
+    // Get the hostname part (before any path)
+    let domain = without_www.split('/').next().unwrap_or(without_www);
+
+    // Remove port if present
+    let domain = domain.split(':').next().unwrap_or(domain);
+
+    if domain.is_empty() {
+        None
+    } else {
+        Some(domain.to_lowercase())
+    }
 }
 
 #[tauri::command]
@@ -1737,18 +1757,31 @@ async fn get_passwords_for_site_handler(
         let url_lower = url.trim().to_lowercase();
         let url_domain = extract_domain(&url_lower);
 
+        eprintln!("[Password Search] Searching for URL: '{}', extracted domain: {:?}", url_lower, url_domain);
+
         let matching_entries: Vec<_> = state.entries.values()
             .filter(|entry| {
+                // Only return "accounts" category for login autofill
+                if entry.category != "accounts" {
+                    return false;
+                }
+
                 entry.url.as_ref().map_or(false, |entry_url| {
                     let entry_url_lower = entry_url.to_lowercase();
                     let entry_domain = extract_domain(&entry_url_lower);
 
                     // Match by domain
-                    url_domain.as_ref().map_or(false, |search_domain| {
+                    let matches = url_domain.as_ref().map_or(false, |search_domain| {
                         entry_domain.as_ref().map_or(false, |ed| {
                             ed.contains(search_domain) || search_domain.contains(ed)
                         })
-                    })
+                    });
+
+                    if matches {
+                        eprintln!("[Password Search] MATCH: entry '{}' with domain {:?}", entry.title, entry_domain);
+                    }
+
+                    matches
                 })
             })
             .map(|entry| json!({
