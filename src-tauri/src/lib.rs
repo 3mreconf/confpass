@@ -499,7 +499,10 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
                 *master_pwd = Some(SecurePassword::new(master_password.clone()));
             }
             master_password.zeroize();
-            
+
+            // Sync passkeys.json with vault entries (remove stale passkeys)
+            sync_passkeys_with_vault();
+
             Ok(true)
         }
         Err(_) => {
@@ -882,7 +885,26 @@ fn soft_delete_passkey(id: String) -> Result<(), String> {
 
     // Move to trash by changing category
     if entry.category == "passkeys" {
+        // Extract credentialId before changing category
+        let credential_id_to_delete = entry.notes.as_ref().and_then(|notes| {
+            serde_json::from_str::<serde_json::Value>(notes).ok()
+        }).and_then(|json| {
+            json.get("credentialId").and_then(|v| v.as_str()).map(|s| s.to_string())
+        });
+
         entry.category = "passkeys_trash".to_string();
+
+        // Also delete from passkeys.json so it doesn't show in browser
+        if let Some(cred_id) = credential_id_to_delete {
+            if let Ok(mut passkeys) = load_passkeys() {
+                let original_len = passkeys.len();
+                passkeys.retain(|p| p.credential_id != cred_id);
+                if passkeys.len() < original_len {
+                    let _ = save_passkeys(&passkeys);
+                    eprintln!("[Passkey Delete] Removed passkey with credentialId: {} from passkeys.json", cred_id);
+                }
+            }
+        }
     } else {
         return Err("Bu giriş bir geçiş anahtarı değil".to_string());
     }
@@ -953,6 +975,13 @@ fn permanently_delete_passkey(id: String) -> Result<(), String> {
         return Err("Kalıcı silme sadece çöp kutusundan yapılabilir".to_string());
     }
 
+    // Extract credentialId from notes to delete from passkeys.json
+    let credential_id_to_delete = entry.notes.as_ref().and_then(|notes| {
+        serde_json::from_str::<serde_json::Value>(notes).ok()
+    }).and_then(|json| {
+        json.get("credentialId").and_then(|v| v.as_str()).map(|s| s.to_string())
+    });
+
     state.entries.remove(&id);
 
     let pwd_string = {
@@ -967,6 +996,18 @@ fn permanently_delete_passkey(id: String) -> Result<(), String> {
 
     save_vault_to_disk(&state, &pwd_string)
         .map_err(|e| format!("Silme işlemi kaydedilemedi: {}", e))?;
+
+    // Also delete from passkeys.json if credentialId was found
+    if let Some(cred_id) = credential_id_to_delete {
+        if let Ok(mut passkeys) = load_passkeys() {
+            let original_len = passkeys.len();
+            passkeys.retain(|p| p.credential_id != cred_id);
+            if passkeys.len() < original_len {
+                let _ = save_passkeys(&passkeys);
+                eprintln!("[Passkey Delete] Removed passkey with credentialId: {} from passkeys.json", cred_id);
+            }
+        }
+    }
 
     Ok(())
 }
@@ -1495,6 +1536,42 @@ fn save_passkeys(passkeys: &[StoredPasskey]) -> Result<(), String> {
     let path = get_passkeys_path()?;
     let content = serde_json::to_string_pretty(passkeys).map_err(|e| format!("Serialize error: {}", e))?;
     fs::write(&path, content).map_err(|e| format!("Write error: {}", e))
+}
+
+// Sync passkeys.json with vault entries - remove stale passkeys
+fn sync_passkeys_with_vault() {
+    let state = match get_state() {
+        Ok(s) => s,
+        Err(_) => return,
+    };
+
+    if state.vault_locked {
+        return;
+    }
+
+    // Collect all credentialIds from vault passkey entries
+    let vault_credential_ids: std::collections::HashSet<String> = state.entries.values()
+        .filter(|e| e.category == "passkeys")
+        .filter_map(|e| {
+            e.notes.as_ref().and_then(|notes| {
+                serde_json::from_str::<serde_json::Value>(notes).ok()
+            }).and_then(|json| {
+                json.get("credentialId").and_then(|v| v.as_str()).map(|s| s.to_string())
+            })
+        })
+        .collect();
+
+    // Load passkeys.json and remove any that are not in vault
+    if let Ok(mut passkeys) = load_passkeys() {
+        let original_len = passkeys.len();
+        passkeys.retain(|p| vault_credential_ids.contains(&p.credential_id));
+
+        if passkeys.len() < original_len {
+            let removed = original_len - passkeys.len();
+            eprintln!("[Passkey Sync] Removed {} stale passkeys from passkeys.json", removed);
+            let _ = save_passkeys(&passkeys);
+        }
+    }
 }
 
 async fn save_passkey_handler(
