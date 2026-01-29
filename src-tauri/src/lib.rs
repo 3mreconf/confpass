@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use tauri::Emitter;
 use std::collections::HashMap;
 use std::sync::{Mutex, MutexGuard};
 use once_cell::sync::Lazy;
@@ -1334,6 +1335,8 @@ async fn start_http_server() {
         .route("/get_totp_code", post(get_totp_code_handler))
         .route("/get_cards", post(get_cards_handler))
         .route("/get_addresses", post(get_addresses_handler))
+        .route("/check_duplicate", post(check_duplicate_handler))
+        .route("/save_entry", post(save_entry_handler))
         .layer(cors);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:1421").await;
@@ -1454,26 +1457,37 @@ async fn save_password_handler(
             category: "accounts".to_string(),
         };
         
-        state.entries.insert(id, entry);
-        
+        state.entries.insert(id.clone(), entry);
+
         let pwd_string = {
             let master_pwd = MASTER_PASSWORD.lock()
                 .map_err(|_| "Master password lock hatası".to_string())?;
-            
+
             let pwd = master_pwd.as_ref()
                 .ok_or_else(|| "Master password bulunamadı. Lütfen kasa kilidini açın.".to_string())?;
-            
+
             pwd.as_str().to_string()
         };
-        
+
         save_vault_to_disk(&state, &pwd_string)
             .map_err(|e| format!("Browser extension kaydetme hatası: {}", e))?;
-        
-        Ok(())
+
+        Ok(id)
     }).await;
-    
+
     match result {
-        Ok(Ok(_)) => Ok(Json(json!({"success": true}))),
+        Ok(Ok(entry_id)) => {
+            // Emit event to frontend to refresh entries
+            if let Some(app_handle) = get_app_handle() {
+                let _ = app_handle.emit("entries-updated", serde_json::json!({
+                    "action": "add",
+                    "entry_id": entry_id,
+                    "category": "accounts"
+                }));
+                eprintln!("[Save Password] Emitted entries-updated event");
+            }
+            Ok(Json(json!({"success": true})))
+        }
         Ok(Err(msg)) => Ok(Json(json!({"success": false, "error": msg}))),
         Err(e) => {
             eprintln!("Task error: {}", e);
@@ -2246,6 +2260,165 @@ async fn get_addresses_handler() -> Result<Json<serde_json::Value>, StatusCode> 
         Ok(Err(msg)) => Ok(Json(json!({"success": false, "error": msg, "addresses": []}))),
         Err(e) => {
             eprintln!("[Addresses HTTP] Task error: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn check_duplicate_handler(
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let result = tokio::task::spawn_blocking(move || {
+        let state = match get_state() {
+            Ok(s) => s,
+            Err(_) => return Err("State access error"),
+        };
+
+        if state.vault_locked {
+            return Err("Vault is locked");
+        }
+
+        let category = payload.get("category").and_then(|v| v.as_str()).unwrap_or("");
+        let url = payload.get("url").and_then(|v| v.as_str()).unwrap_or("");
+        let username = payload.get("username").and_then(|v| v.as_str()).unwrap_or("");
+        let card_number = payload.get("cardNumber").and_then(|v| v.as_str()).unwrap_or("");
+
+        let url_domain = extract_domain(&url.to_lowercase());
+
+        let exists = match category {
+            "accounts" => {
+                state.entries.values().any(|entry| {
+                    entry.category == "accounts" &&
+                    entry.username.to_lowercase() == username.to_lowercase() &&
+                    entry.url.as_ref().map_or(false, |entry_url| {
+                        let entry_domain = extract_domain(&entry_url.to_lowercase());
+                        url_domain.as_ref().map_or(false, |ud| {
+                            entry_domain.as_ref().map_or(false, |ed| ed == ud)
+                        })
+                    })
+                })
+            },
+            "bank_cards" => {
+                let clean_card = card_number.replace(" ", "").replace("-", "");
+                state.entries.values().any(|entry| {
+                    if entry.category != "bank_cards" { return false; }
+                    entry.notes.as_ref().map_or(false, |notes| {
+                        serde_json::from_str::<serde_json::Value>(notes).ok()
+                            .and_then(|json| json.get("cardNumber").and_then(|c| c.as_str()).map(|s| s.to_string()))
+                            .map_or(false, |stored_card| {
+                                stored_card.replace(" ", "").replace("-", "") == clean_card
+                            })
+                    })
+                })
+            },
+            "addresses" => {
+                let street = payload.get("street").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
+                let postal = payload.get("postalCode").and_then(|v| v.as_str()).unwrap_or("");
+
+                state.entries.values().any(|entry| {
+                    if entry.category != "addresses" { return false; }
+                    entry.notes.as_ref().map_or(false, |notes| {
+                        serde_json::from_str::<serde_json::Value>(notes).ok()
+                            .map_or(false, |json| {
+                                let stored_street = json.get("street").and_then(|s| s.as_str()).unwrap_or("").to_lowercase();
+                                let stored_postal = json.get("postalCode").and_then(|s| s.as_str()).unwrap_or("");
+                                stored_street == street && stored_postal == postal
+                            })
+                    })
+                })
+            },
+            _ => false
+        };
+
+        eprintln!("[Check Duplicate] category={}, exists={}", category, exists);
+        Ok(json!({ "exists": exists }))
+    }).await;
+
+    match result {
+        Ok(Ok(data)) => Ok(Json(json!({"success": true, "data": data}))),
+        Ok(Err(msg)) => Ok(Json(json!({"success": false, "error": msg}))),
+        Err(e) => {
+            eprintln!("[Check Duplicate] Task error: {}", e);
+            Err(StatusCode::INTERNAL_SERVER_ERROR)
+        }
+    }
+}
+
+async fn save_entry_handler(
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    let result = tokio::task::spawn_blocking(move || {
+        let mut state = match get_state_mut() {
+            Ok(s) => s,
+            Err(e) => return Err(e.to_string()),
+        };
+
+        if state.vault_locked {
+            return Err("Kasa kilitli".to_string());
+        }
+
+        let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+        let category = payload.get("category").and_then(|v| v.as_str()).unwrap_or("accounts").trim().to_string();
+        let notes = payload.get("notes").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let url = payload.get("url").and_then(|v| v.as_str()).map(|s| s.to_string());
+        let username = payload.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let password = payload.get("password").and_then(|v| v.as_str()).unwrap_or("").to_string();
+
+        if title.is_empty() {
+            return Err("Başlık gerekli".to_string());
+        }
+
+        let id = format!("entry_{}", uuid::Uuid::new_v4());
+        let now = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map_err(|e| format!("Time error: {}", e))?
+            .as_secs() as i64;
+
+        let category_clone = category.clone();
+        let entry = PasswordEntry {
+            id: id.clone(),
+            title,
+            username,
+            password,
+            url,
+            notes,
+            created_at: now,
+            updated_at: now,
+            category,
+        };
+
+        state.entries.insert(id.clone(), entry);
+
+        let pwd_string = {
+            let master_pwd = MASTER_PASSWORD.lock()
+                .map_err(|_| "Master password lock hatası".to_string())?;
+            let pwd = master_pwd.as_ref()
+                .ok_or_else(|| "Master password bulunamadı".to_string())?;
+            pwd.as_str().to_string()
+        };
+
+        save_vault_to_disk(&state, &pwd_string)?;
+
+        eprintln!("[Save Entry] Saved entry {} with category {}", id, category_clone);
+        Ok((id, category_clone))
+    }).await;
+
+    match result {
+        Ok(Ok((entry_id, category))) => {
+            // Emit event to frontend to refresh entries
+            if let Some(app_handle) = get_app_handle() {
+                let _ = app_handle.emit("entries-updated", serde_json::json!({
+                    "action": "add",
+                    "entry_id": entry_id,
+                    "category": category
+                }));
+                eprintln!("[Save Entry] Emitted entries-updated event for category: {}", category);
+            }
+            Ok(Json(json!({"success": true})))
+        }
+        Ok(Err(msg)) => Ok(Json(json!({"success": false, "error": msg}))),
+        Err(e) => {
+            eprintln!("[Save Entry] Task error: {}", e);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
         }
     }

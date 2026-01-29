@@ -137,10 +137,42 @@ function App() {
           }
         });
 
+        // Listen for entries-updated events (from browser extension auto-save)
+        interface EntriesUpdatedEvent {
+          action: string;
+          entry_id: string;
+          category?: string;
+        }
+        const unlistenEntriesUpdated = await listen<EntriesUpdatedEvent>('entries-updated', async (event) => {
+          console.log('[Entries Listener] entries-updated event received:', event.payload);
+
+          // Reload entries to show the new entry in UI
+          try {
+            const loadedEntries = await invoke<PasswordEntry[]>('get_password_entries');
+            setEntries(loadedEntries);
+
+            // Show category-specific toast message
+            const category = event.payload.category || 'accounts';
+            const toastMessages: Record<string, string> = {
+              'accounts': 'Yeni şifre kaydedildi',
+              'bank_cards': 'Yeni kart kaydedildi',
+              'addresses': 'Yeni adres kaydedildi',
+              'passkeys': 'Yeni geçiş anahtarı kaydedildi',
+              'authenticator': 'Yeni doğrulayıcı kaydedildi',
+              'notes': 'Yeni not kaydedildi',
+              'documents': 'Yeni belge kaydedildi'
+            };
+            showToast(toastMessages[category] || 'Yeni kayıt eklendi', 'success');
+          } catch (err) {
+            console.error('[Entries Listener] Failed to reload entries:', err);
+          }
+        });
+
         console.log('[Passkey Listener] Listeners set up successfully');
         return () => {
           unlistenDetected();
           unlistenSaved();
+          unlistenEntriesUpdated();
         };
       } catch (error) {
         console.error('[Passkey Listener] Failed to set up listeners:', error);
@@ -278,8 +310,8 @@ function App() {
 
   useEffect(() => {
     if (vaultLocked) {
-      const title = 'ConfPass';
-      const subtitle = 'Güvenli Şifre Yöneticisi';
+      const title = 'ConfPass v1.6.0';
+      const subtitle = 'Gelişmiş Güvenlik & Şifre Yönetimi';
       
       setDisplayTitle('');
       setDisplaySubtitle('');
@@ -302,7 +334,7 @@ function App() {
             }
           }, 50);
         }
-      }, 100);
+      }, 80);
       
       return () => {
         clearInterval(titleInterval);
@@ -625,7 +657,10 @@ function App() {
           <div className="sidebar-logo">
             <Shield size={24} />
             <div>
-              <h2>ConfPass</h2>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                <h2 style={{ margin: 0 }}>ConfPass</h2>
+                <span className="version-badge">v1.6.0</span>
+              </div>
               <p className="sidebar-subtitle">Password Manager</p>
             </div>
           </div>

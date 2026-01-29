@@ -409,6 +409,184 @@
       height: 14px !important;
       stroke: #10b981 !important;
     }
+
+    /* ========== Auto-Save Modal Styles ========== */
+    .confpass-save-overlay {
+      position: fixed !important;
+      top: 0 !important;
+      left: 0 !important;
+      width: 100% !important;
+      height: 100% !important;
+      background: rgba(5, 5, 7, 0.85) !important;
+      backdrop-filter: blur(8px) !important;
+      z-index: 2147483647 !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif !important;
+      animation: confpass-fade-in 0.2s ease !important;
+    }
+
+    @keyframes confpass-fade-in {
+      from { opacity: 0; }
+      to { opacity: 1; }
+    }
+
+    @keyframes confpass-scale-in {
+      from { transform: scale(0.95); opacity: 0; }
+      to { transform: scale(1); opacity: 1; }
+    }
+
+    .confpass-save-dialog {
+      background: #0a0a0c !important;
+      border: 1px solid rgba(255, 255, 255, 0.06) !important;
+      border-radius: 16px !important;
+      padding: 24px !important;
+      max-width: 400px !important;
+      width: 90% !important;
+      box-shadow: 0 24px 80px rgba(0, 0, 0, 0.7), 0 0 60px rgba(245, 158, 11, 0.1) !important;
+      color: #fafafa !important;
+      position: relative !important;
+      overflow: hidden !important;
+      animation: confpass-scale-in 0.3s ease !important;
+    }
+
+    .confpass-save-dialog::before {
+      content: '' !important;
+      position: absolute !important;
+      top: 0 !important;
+      left: 0 !important;
+      right: 0 !important;
+      height: 1px !important;
+      background: linear-gradient(90deg, transparent, rgba(245, 158, 11, 0.4), transparent) !important;
+    }
+
+    .confpass-save-header {
+      display: flex !important;
+      align-items: center !important;
+      gap: 12px !important;
+      margin-bottom: 16px !important;
+    }
+
+    .confpass-save-icon {
+      width: 40px !important;
+      height: 40px !important;
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%) !important;
+      border-radius: 10px !important;
+      display: flex !important;
+      align-items: center !important;
+      justify-content: center !important;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3) !important;
+    }
+
+    .confpass-save-icon svg {
+      width: 20px !important;
+      height: 20px !important;
+      stroke: white !important;
+      fill: none !important;
+    }
+
+    .confpass-save-title {
+      font-size: 16px !important;
+      font-weight: 700 !important;
+      color: #fafafa !important;
+      margin: 0 !important;
+    }
+
+    .confpass-save-subtitle {
+      font-size: 12px !important;
+      color: #71717a !important;
+      margin: 0 !important;
+    }
+
+    .confpass-save-info {
+      background: #111114 !important;
+      padding: 14px !important;
+      border-radius: 10px !important;
+      margin-bottom: 18px !important;
+      border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    }
+
+    .confpass-save-info-row {
+      display: flex !important;
+      justify-content: space-between !important;
+      padding: 6px 0 !important;
+      font-size: 13px !important;
+    }
+
+    .confpass-save-info-row:first-child {
+      padding-top: 0 !important;
+    }
+
+    .confpass-save-info-row:last-child {
+      padding-bottom: 0 !important;
+    }
+
+    .confpass-save-info-label {
+      color: #71717a !important;
+    }
+
+    .confpass-save-info-value {
+      color: #fafafa !important;
+      font-weight: 500 !important;
+      max-width: 200px !important;
+      overflow: hidden !important;
+      text-overflow: ellipsis !important;
+      white-space: nowrap !important;
+    }
+
+    .confpass-save-buttons {
+      display: flex !important;
+      gap: 10px !important;
+    }
+
+    .confpass-save-btn {
+      flex: 1 !important;
+      padding: 12px 18px !important;
+      border-radius: 8px !important;
+      font-size: 13px !important;
+      font-weight: 600 !important;
+      cursor: pointer !important;
+      transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+      border: none !important;
+      font-family: inherit !important;
+    }
+
+    .confpass-save-btn-primary {
+      background: linear-gradient(135deg, #fbbf24 0%, #f59e0b 50%, #d97706 100%) !important;
+      color: white !important;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.25) !important;
+    }
+
+    .confpass-save-btn-primary:hover {
+      transform: translateY(-1px) !important;
+      box-shadow: 0 6px 20px rgba(245, 158, 11, 0.4) !important;
+    }
+
+    .confpass-save-btn-secondary {
+      background: #18181c !important;
+      color: #a1a1aa !important;
+      border: 1px solid rgba(255, 255, 255, 0.06) !important;
+    }
+
+    .confpass-save-btn-secondary:hover {
+      background: #1f1f24 !important;
+      color: #fafafa !important;
+    }
+
+    .confpass-save-notification {
+      position: fixed !important;
+      bottom: 20px !important;
+      right: 20px !important;
+      padding: 12px 20px !important;
+      border-radius: 8px !important;
+      font-family: -apple-system, sans-serif !important;
+      font-size: 14px !important;
+      font-weight: 500 !important;
+      z-index: 2147483647 !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+      animation: confpass-slide-in 0.3s ease !important;
+    }
   `;
 
   function injectStyles() {
@@ -1019,7 +1197,7 @@
         const index = parseInt(item.dataset.index);
         const card = cards[index];
         if (card && card.cardNumber) {
-          fillCardFields(card);
+          fillCardFields(card, targetField);
           if (activeDropdown) {
             activeDropdown.remove();
             activeDropdown = null;
@@ -2092,6 +2270,742 @@
     totpFields.forEach(field => addTotpIconToField(field));
   }
 
+  // ========== Auto-Save Form Detection ==========
+  const processedForms = new WeakSet();
+  const processedButtons = new WeakSet();
+  const processedPasswordFields = new WeakSet();
+  let pendingCredentials = null;
+  let lastSavePromptTime = 0;
+  let lastCapturedCredentials = null;
+  const SAVE_PROMPT_DEBOUNCE = 2000; // 2 seconds debounce
+
+  function setupFormSubmissionDetection() {
+    // Attach to forms
+    document.querySelectorAll('form').forEach(attachFormListener);
+
+    // SPA Support: Attach to ALL buttons that might submit (Instagram, Facebook, etc.)
+    attachToAllButtons();
+
+    // SPA Support: Watch password fields for Enter key and capture values
+    attachToPasswordFields();
+
+    // SPA Support: Watch for URL changes (navigation without page reload)
+    setupNavigationDetection();
+  }
+
+  function attachFormListener(form) {
+    if (processedForms.has(form)) return;
+    processedForms.add(form);
+
+    // Listen for form submit
+    form.addEventListener('submit', handleFormSubmit, true);
+
+    // Also capture click on submit buttons within form
+    form.querySelectorAll('button[type="submit"], input[type="submit"], button:not([type])').forEach(btn => {
+      attachButtonListener(btn);
+    });
+
+    console.log('[ConfPass] Attached listener to form');
+  }
+
+  function attachToAllButtons() {
+    // Find buttons that look like login/signup buttons (even outside forms)
+    const buttonSelectors = [
+      'button[type="submit"]',
+      'input[type="submit"]',
+      'button:not([type])',
+      '[role="button"]',
+      'div[tabindex="0"]',
+      // Common login button patterns
+      'button[name*="login" i]',
+      'button[name*="signin" i]',
+      'button[name*="signup" i]',
+      'button[name*="register" i]',
+      'button[name*="giris" i]',
+      'button[name*="kayit" i]',
+      '[data-testid*="login" i]',
+      '[data-testid*="signin" i]',
+      '[data-testid*="signup" i]',
+      '[aria-label*="login" i]',
+      '[aria-label*="sign in" i]',
+      '[aria-label*="giriş" i]'
+    ];
+
+    document.querySelectorAll(buttonSelectors.join(',')).forEach(btn => {
+      attachButtonListener(btn);
+    });
+  }
+
+  function attachButtonListener(btn) {
+    if (processedButtons.has(btn)) return;
+    processedButtons.add(btn);
+
+    btn.addEventListener('click', (e) => {
+      // Capture credentials before click action
+      captureCurrentCredentials();
+
+      // After click, check if we should prompt
+      setTimeout(() => {
+        if (lastCapturedCredentials) {
+          handleCredentialCapture(lastCapturedCredentials);
+        }
+      }, 300);
+    }, true);
+  }
+
+  function attachToPasswordFields() {
+    document.querySelectorAll('input[type="password"]').forEach(field => {
+      if (processedPasswordFields.has(field)) return;
+      processedPasswordFields.add(field);
+
+      // Capture on Enter key
+      field.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          captureCurrentCredentials();
+          setTimeout(() => {
+            if (lastCapturedCredentials) {
+              handleCredentialCapture(lastCapturedCredentials);
+            }
+          }, 300);
+        }
+      }, true);
+
+      // Also capture when leaving password field (backup)
+      field.addEventListener('blur', () => {
+        if (field.value && field.value.length >= 4) {
+          captureCurrentCredentials();
+        }
+      }, true);
+    });
+  }
+
+  function captureCurrentCredentials() {
+    const fields = findLoginFields();
+
+    // Find filled password fields
+    const filledPasswords = fields.password.filter(f => f.value && f.value.length >= 4);
+    if (filledPasswords.length === 0) return;
+
+    // Find associated username
+    let username = '';
+    for (const field of fields.username) {
+      if (field.value) {
+        username = field.value.trim();
+        break;
+      }
+    }
+
+    // If no username found in username fields, check all visible text/email inputs
+    if (!username) {
+      const allInputs = document.querySelectorAll('input[type="text"], input[type="email"], input:not([type])');
+      for (const input of allInputs) {
+        if (!isFieldVisible(input) || !input.value) continue;
+
+        const inputName = (input.name || '').toLowerCase();
+        const inputId = (input.id || '').toLowerCase();
+        const inputPlaceholder = (input.placeholder || '').toLowerCase();
+        const inputAutocomplete = (input.autocomplete || '').toLowerCase();
+
+        // Skip search fields and other non-username fields
+        if (inputName.includes('search') || inputId.includes('search')) continue;
+        if (inputName.includes('card') || inputId.includes('card')) continue;
+        if (inputName.includes('phone') || inputId.includes('phone')) continue;
+        if (inputName.includes('address') || inputId.includes('address')) continue;
+
+        // Check if it looks like a username/email field
+        const isLikelyUsername =
+          input.type === 'email' ||
+          input.value.includes('@') ||
+          inputAutocomplete.includes('email') ||
+          inputAutocomplete.includes('username') ||
+          inputName.includes('user') ||
+          inputName.includes('email') ||
+          inputName.includes('login') ||
+          inputId.includes('user') ||
+          inputId.includes('email') ||
+          inputId.includes('login') ||
+          inputPlaceholder.includes('email') ||
+          inputPlaceholder.includes('kullanıcı') ||
+          inputPlaceholder.includes('e-posta');
+
+        if (isLikelyUsername && input.value.length >= 3) {
+          username = input.value.trim();
+          break;
+        }
+      }
+    }
+
+    if (username && filledPasswords[0].value) {
+      lastCapturedCredentials = {
+        type: 'accounts',
+        username,
+        password: filledPasswords[0].value,
+        url: window.location.href,
+        title: extractSiteTitle()
+      };
+      console.log('[ConfPass] Credentials captured:', username);
+    }
+  }
+
+  function setupNavigationDetection() {
+    // Watch for URL changes (SPA navigation)
+    let lastUrl = window.location.href;
+
+    const checkUrlChange = () => {
+      if (window.location.href !== lastUrl) {
+        const hadCredentials = lastCapturedCredentials;
+        lastUrl = window.location.href;
+
+        // If we had captured credentials and URL changed, might be successful login
+        if (hadCredentials) {
+          console.log('[ConfPass] URL changed after credential capture');
+          setTimeout(() => {
+            handleCredentialCapture(hadCredentials);
+            lastCapturedCredentials = null;
+          }, 500);
+        }
+      }
+    };
+
+    // Check periodically
+    setInterval(checkUrlChange, 500);
+
+    // Also watch for history changes
+    const originalPushState = history.pushState;
+    history.pushState = function(...args) {
+      originalPushState.apply(this, args);
+      checkUrlChange();
+    };
+
+    const originalReplaceState = history.replaceState;
+    history.replaceState = function(...args) {
+      originalReplaceState.apply(this, args);
+      checkUrlChange();
+    };
+
+    window.addEventListener('popstate', checkUrlChange);
+  }
+
+  function handleCredentialCapture(credentials) {
+    if (!credentials || !credentials.type) return;
+
+    // Debounce
+    const now = Date.now();
+    if (now - lastSavePromptTime < SAVE_PROMPT_DEBOUNCE) {
+      return;
+    }
+
+    console.log('[ConfPass] Handling credential capture:', credentials.type);
+    lastSavePromptTime = now;
+    setTimeout(() => checkAndPromptSave(credentials), 150);
+  }
+
+  function handleFormSubmit(event) {
+    // Debounce to prevent multiple prompts
+    const now = Date.now();
+    if (now - lastSavePromptTime < SAVE_PROMPT_DEBOUNCE) {
+      return;
+    }
+
+    const form = event.target.closest ? event.target.closest('form') : event.target;
+    const formData = extractFormData(form);
+
+    if (formData && formData.type) {
+      console.log('[ConfPass] Form data extracted:', formData.type);
+      pendingCredentials = formData;
+      lastSavePromptTime = now;
+      // Delay to allow form to process, but quick enough to catch the data
+      setTimeout(() => checkAndPromptSave(formData), 150);
+    }
+  }
+
+  function extractFormData(form) {
+    const fields = findLoginFields();
+
+    // Check which fields are in this form
+    const formPasswordFields = fields.password.filter(f => !form || form.contains(f));
+    const formUsernameFields = fields.username.filter(f => !form || form.contains(f));
+    const formCardFields = fields.card.filter(f => !form || form.contains(f));
+    const formAddressFields = fields.address.filter(f => !form || form.contains(f));
+
+    // Priority: Password > Card > Address
+    if (formPasswordFields.length > 0) {
+      return extractPasswordData(form, { username: formUsernameFields, password: formPasswordFields });
+    }
+    if (formCardFields.length > 0) {
+      return extractCardData(form);
+    }
+    if (formAddressFields.length > 0) {
+      return extractAddressData(form);
+    }
+
+    return null;
+  }
+
+  function extractPasswordData(form, fields) {
+    let username = '';
+    let password = '';
+
+    // Get username
+    for (const field of fields.username) {
+      if (field.value && !username) {
+        username = field.value.trim();
+        break;
+      }
+    }
+
+    // Get password
+    for (const field of fields.password) {
+      if (field.value && !password) {
+        password = field.value;
+        break;
+      }
+    }
+
+    // Need both username and password
+    if (username && password && password.length >= 4) {
+      return {
+        type: 'accounts',
+        username,
+        password,
+        url: window.location.href,
+        title: extractSiteTitle()
+      };
+    }
+    return null;
+  }
+
+  function extractCardData(form) {
+    const cardNumber = extractFieldValue(form, CARD_SELECTORS);
+    const expiry = extractFieldValue(form, EXPIRY_SELECTORS);
+    const cvv = extractFieldValue(form, CVV_SELECTORS);
+    const cardholderName = extractFieldValue(form, [
+      'input[name*="holder" i]',
+      'input[name*="cardholder" i]',
+      'input[name*="card" i][name*="name" i]',
+      'input[autocomplete="cc-name"]',
+      'input[placeholder*="isim" i]',
+      'input[placeholder*="name" i]'
+    ]);
+
+    // Clean card number
+    const cleanCard = cardNumber.replace(/\s/g, '').replace(/-/g, '');
+
+    if (cleanCard && cleanCard.length >= 13 && cleanCard.length <= 19) {
+      return {
+        type: 'bank_cards',
+        cardNumber: cleanCard,
+        expiry: expiry || '',
+        cvv: cvv || '',
+        cardholderName: cardholderName || '',
+        cardType: detectCardType(cleanCard),
+        title: `${detectCardType(cleanCard)} •••• ${cleanCard.slice(-4)}`,
+        url: window.location.href
+      };
+    }
+    return null;
+  }
+
+  function extractAddressData(form) {
+    const street = extractFieldValue(form, [
+      'input[name*="street" i]',
+      'input[name*="address" i]',
+      'input[name*="adres" i]',
+      'input[name*="sokak" i]',
+      'input[name*="cadde" i]',
+      'input[name*="mahalle" i]',
+      'textarea[name*="address" i]',
+      'textarea[name*="adres" i]',
+      'input[autocomplete="street-address"]',
+      'input[autocomplete="address-line1"]'
+    ]);
+
+    const city = extractFieldValue(form, [
+      'input[name*="city" i]',
+      'input[name*="sehir" i]',
+      'input[name*="şehir" i]',
+      'input[name*="il" i]',
+      'input[autocomplete="address-level2"]',
+      'select[name*="city" i]',
+      'select[name*="il" i]'
+    ]);
+
+    const state = extractFieldValue(form, [
+      'input[name*="state" i]',
+      'input[name*="province" i]',
+      'input[name*="ilce" i]',
+      'input[name*="ilçe" i]',
+      'input[autocomplete="address-level1"]',
+      'select[name*="state" i]'
+    ]);
+
+    const postalCode = extractFieldValue(form, [
+      'input[name*="postal" i]',
+      'input[name*="zip" i]',
+      'input[name*="posta" i]',
+      'input[name*="postcode" i]',
+      'input[autocomplete="postal-code"]'
+    ]);
+
+    const country = extractFieldValue(form, [
+      'input[name*="country" i]',
+      'input[name*="ulke" i]',
+      'input[name*="ülke" i]',
+      'select[name*="country" i]',
+      'select[name*="ulke" i]',
+      'input[autocomplete="country-name"]'
+    ]);
+
+    if (street || (city && postalCode)) {
+      return {
+        type: 'addresses',
+        street: street || '',
+        city: city || '',
+        state: state || '',
+        postalCode: postalCode || '',
+        country: country || '',
+        title: city ? `${city} Adresi` : 'Kayıtlı Adres',
+        url: window.location.href
+      };
+    }
+    return null;
+  }
+
+  function extractFieldValue(form, selectors) {
+    for (const selector of selectors) {
+      try {
+        const fields = form ? form.querySelectorAll(selector) : document.querySelectorAll(selector);
+        for (const field of fields) {
+          if (isFieldVisible(field) && field.value) {
+            // For select elements, get the selected option text or value
+            if (field.tagName === 'SELECT') {
+              const selectedOption = field.options[field.selectedIndex];
+              return selectedOption ? (selectedOption.text || selectedOption.value) : '';
+            }
+            return field.value.trim();
+          }
+        }
+      } catch (e) {}
+    }
+    return '';
+  }
+
+  function detectCardType(number) {
+    const cleaned = number.replace(/\D/g, '');
+    if (/^4/.test(cleaned)) return 'Visa';
+    if (/^5[1-5]/.test(cleaned)) return 'Mastercard';
+    if (/^3[47]/.test(cleaned)) return 'Amex';
+    if (/^6(?:011|5)/.test(cleaned)) return 'Discover';
+    if (/^9792/.test(cleaned)) return 'Troy';
+    if (/^62/.test(cleaned)) return 'UnionPay';
+    return 'Kart';
+  }
+
+  function extractSiteTitle() {
+    // Try to get a clean site name
+    const hostname = window.location.hostname.replace('www.', '');
+    const parts = hostname.split('.');
+    if (parts.length >= 2) {
+      // Capitalize first letter of main domain
+      const name = parts[parts.length - 2];
+      return name.charAt(0).toUpperCase() + name.slice(1);
+    }
+    return document.title || hostname;
+  }
+
+  // ========== Auto-Save Modal ==========
+  function showSaveCredentialModal(data) {
+    injectStyles();
+
+    return new Promise((resolve) => {
+      // Remove any existing modal
+      const existingOverlay = document.querySelector('.confpass-save-overlay');
+      if (existingOverlay) existingOverlay.remove();
+
+      const overlay = document.createElement('div');
+      overlay.className = 'confpass-save-overlay';
+
+      const iconSvg = getIconForType(data.type);
+      const titleText = getTitleForType(data.type);
+      const infoRows = getInfoRowsForType(data);
+
+      overlay.innerHTML = `
+        <div class="confpass-save-dialog">
+          <div class="confpass-save-header">
+            <div class="confpass-save-icon">
+              ${iconSvg}
+            </div>
+            <div>
+              <h2 class="confpass-save-title">${titleText}</h2>
+              <p class="confpass-save-subtitle">${escapeHtml(window.location.hostname)}</p>
+            </div>
+          </div>
+          <div class="confpass-save-info">
+            ${infoRows}
+          </div>
+          <div class="confpass-save-buttons">
+            <button class="confpass-save-btn confpass-save-btn-secondary" id="confpass-save-cancel">
+              Kaydetme
+            </button>
+            <button class="confpass-save-btn confpass-save-btn-primary" id="confpass-save-confirm">
+              Kaydet
+            </button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(overlay);
+
+      const cleanup = () => {
+        overlay.remove();
+        document.removeEventListener('keydown', escHandler);
+      };
+
+      document.getElementById('confpass-save-confirm').onclick = () => {
+        cleanup();
+        resolve({ save: true });
+      };
+
+      document.getElementById('confpass-save-cancel').onclick = () => {
+        cleanup();
+        resolve({ save: false });
+      };
+
+      // Close on overlay click
+      overlay.onclick = (e) => {
+        if (e.target === overlay) {
+          cleanup();
+          resolve({ save: false });
+        }
+      };
+
+      // Close on Escape key
+      const escHandler = (e) => {
+        if (e.key === 'Escape') {
+          cleanup();
+          resolve({ save: false });
+        }
+      };
+      document.addEventListener('keydown', escHandler);
+    });
+  }
+
+  function getIconForType(type) {
+    const icons = {
+      accounts: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+        <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+      </svg>`,
+      bank_cards: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="1" y="4" width="22" height="16" rx="2" ry="2"/>
+        <line x1="1" y1="10" x2="23" y2="10"/>
+      </svg>`,
+      addresses: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+        <circle cx="12" cy="10" r="3"/>
+      </svg>`
+    };
+    return icons[type] || icons.accounts;
+  }
+
+  function getTitleForType(type) {
+    const titles = {
+      accounts: 'Şifre Kaydedilsin mi?',
+      bank_cards: 'Kart Kaydedilsin mi?',
+      addresses: 'Adres Kaydedilsin mi?'
+    };
+    return titles[type] || 'Kaydedilsin mi?';
+  }
+
+  function getInfoRowsForType(data) {
+    let rows = '';
+
+    switch (data.type) {
+      case 'accounts':
+        rows = `
+          <div class="confpass-save-info-row">
+            <span class="confpass-save-info-label">Kullanıcı:</span>
+            <span class="confpass-save-info-value">${escapeHtml(data.username)}</span>
+          </div>
+          <div class="confpass-save-info-row">
+            <span class="confpass-save-info-label">Şifre:</span>
+            <span class="confpass-save-info-value">••••••••</span>
+          </div>
+        `;
+        break;
+      case 'bank_cards':
+        rows = `
+          <div class="confpass-save-info-row">
+            <span class="confpass-save-info-label">Kart:</span>
+            <span class="confpass-save-info-value">•••• •••• •••• ${escapeHtml(data.cardNumber.slice(-4))}</span>
+          </div>
+        `;
+        if (data.cardholderName) {
+          rows += `
+            <div class="confpass-save-info-row">
+              <span class="confpass-save-info-label">Kart Sahibi:</span>
+              <span class="confpass-save-info-value">${escapeHtml(data.cardholderName)}</span>
+            </div>
+          `;
+        }
+        if (data.expiry) {
+          rows += `
+            <div class="confpass-save-info-row">
+              <span class="confpass-save-info-label">Son Kullanma:</span>
+              <span class="confpass-save-info-value">${escapeHtml(data.expiry)}</span>
+            </div>
+          `;
+        }
+        break;
+      case 'addresses':
+        if (data.street) {
+          rows += `
+            <div class="confpass-save-info-row">
+              <span class="confpass-save-info-label">Adres:</span>
+              <span class="confpass-save-info-value">${escapeHtml(data.street)}</span>
+            </div>
+          `;
+        }
+        if (data.city) {
+          rows += `
+            <div class="confpass-save-info-row">
+              <span class="confpass-save-info-label">Şehir:</span>
+              <span class="confpass-save-info-value">${escapeHtml(data.city)}</span>
+            </div>
+          `;
+        }
+        if (data.postalCode) {
+          rows += `
+            <div class="confpass-save-info-row">
+              <span class="confpass-save-info-label">Posta Kodu:</span>
+              <span class="confpass-save-info-value">${escapeHtml(data.postalCode)}</span>
+            </div>
+          `;
+        }
+        break;
+    }
+
+    return rows;
+  }
+
+  function showSaveNotification(message, type) {
+    const existing = document.querySelector('.confpass-save-notification');
+    if (existing) existing.remove();
+
+    const notification = document.createElement('div');
+    notification.className = 'confpass-save-notification';
+    notification.style.cssText = `
+      position: fixed !important;
+      bottom: 20px !important;
+      right: 20px !important;
+      padding: 12px 20px !important;
+      background: ${type === 'success' ? 'linear-gradient(135deg, #fbbf24, #f59e0b)' : '#ef4444'} !important;
+      color: white !important;
+      border-radius: 8px !important;
+      font-family: -apple-system, sans-serif !important;
+      font-size: 14px !important;
+      font-weight: 500 !important;
+      z-index: 2147483647 !important;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.3) !important;
+      animation: confpass-slide-in 0.3s ease !important;
+    `;
+    notification.textContent = message;
+    document.body.appendChild(notification);
+
+    setTimeout(() => notification.remove(), 3000);
+  }
+
+  // ========== Auto-Save Orchestrator ==========
+  async function checkAndPromptSave(formData) {
+    if (!formData || !formData.type) return;
+
+    console.log('[ConfPass] Checking for duplicate:', formData.type);
+
+    try {
+      // First check for duplicates (also checks if vault is locked)
+      const duplicateCheck = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+          type: 'check_duplicate',
+          data: formData
+        }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('[ConfPass] Duplicate check error:', chrome.runtime.lastError);
+            resolve({ success: false, error: 'connection_error' });
+            return;
+          }
+          resolve(response);
+        });
+      });
+
+      // Check if vault is locked
+      if (duplicateCheck?.error === 'Vault is locked') {
+        console.log('[ConfPass] Vault is locked, showing notification');
+        showSaveNotification('Kasa kilitli - Kaydetmek için uygulamayı açın', 'error');
+        // Try to open the app
+        chrome.runtime.sendMessage({ type: 'open_app' });
+        return;
+      }
+
+      // Check if app is not running
+      if (duplicateCheck?.error === 'connection_error' || !duplicateCheck?.success) {
+        console.log('[ConfPass] App not running or connection error');
+        showSaveNotification('ConfPass uygulaması çalışmıyor', 'error');
+        return;
+      }
+
+      if (duplicateCheck?.data?.exists) {
+        console.log('[ConfPass] Credential already exists, skipping save prompt');
+        return;
+      }
+
+      // Show save modal
+      const result = await showSaveCredentialModal(formData);
+
+      if (result.save) {
+        console.log('[ConfPass] User chose to save');
+
+        // Save the credential
+        const saveResult = await new Promise((resolve) => {
+          chrome.runtime.sendMessage({
+            type: 'save_credential',
+            data: formData
+          }, (response) => {
+            if (chrome.runtime.lastError) {
+              console.error('[ConfPass] Save error:', chrome.runtime.lastError);
+              resolve({ success: false, error: chrome.runtime.lastError.message });
+              return;
+            }
+            resolve(response);
+          });
+        });
+
+        if (saveResult?.success) {
+          // Show category-specific success message
+          const successMessages = {
+            'accounts': 'Şifre kaydedildi!',
+            'bank_cards': 'Kart kaydedildi!',
+            'addresses': 'Adres kaydedildi!'
+          };
+          showSaveNotification(successMessages[formData.type] || 'Kaydedildi!', 'success');
+        } else {
+          // Handle specific errors
+          const errorMsg = saveResult?.error || 'Kaydetme hatası';
+          if (errorMsg.includes('kilitli') || errorMsg.includes('locked')) {
+            showSaveNotification('Kasa kilitli - Uygulamayı açın', 'error');
+            chrome.runtime.sendMessage({ type: 'open_app' });
+          } else {
+            showSaveNotification(errorMsg, 'error');
+          }
+        }
+      } else {
+        console.log('[ConfPass] User cancelled save');
+      }
+    } catch (error) {
+      console.error('[ConfPass] Auto-save error:', error);
+      showSaveNotification('Bir hata oluştu', 'error');
+    }
+  }
+
   // ========== Start ==========
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
@@ -2099,17 +3013,65 @@
     init();
   }
 
+  // Initialize form detection
+  setTimeout(setupFormSubmissionDetection, 500);
+  setTimeout(setupFormSubmissionDetection, 1500);
+  setTimeout(setupFormSubmissionDetection, 3000);
+
   setTimeout(scanForTotpFields, 500);
   setTimeout(scanForTotpFields, 1500);
   setTimeout(scanForTotpFields, 3000);
 
+  // Watch for new forms, buttons, and password fields being added to the page
+  const formObserver = new MutationObserver((mutations) => {
+    let shouldRescan = false;
+    for (const mutation of mutations) {
+      if (mutation.addedNodes.length > 0) {
+        mutation.addedNodes.forEach(node => {
+          if (node.nodeType === 1) {
+            // Check for forms
+            if (node.tagName === 'FORM') {
+              attachFormListener(node);
+            }
+            if (node.querySelectorAll) {
+              node.querySelectorAll('form').forEach(attachFormListener);
+
+              // Check for password fields (SPA support)
+              node.querySelectorAll('input[type="password"]').forEach(field => {
+                if (!processedPasswordFields.has(field)) {
+                  shouldRescan = true;
+                }
+              });
+
+              // Check for buttons (SPA support)
+              node.querySelectorAll('button, [role="button"], input[type="submit"]').forEach(btn => {
+                if (!processedButtons.has(btn)) {
+                  shouldRescan = true;
+                }
+              });
+            }
+          }
+        });
+      }
+    }
+
+    // Rescan for SPA elements
+    if (shouldRescan) {
+      setTimeout(() => {
+        attachToAllButtons();
+        attachToPasswordFields();
+      }, 100);
+    }
+  });
+
   const totpObserver = new MutationObserver(() => {
     setTimeout(scanForTotpFields, 100);
   });
-  
+
   if (document.body) {
+    formObserver.observe(document.body, { childList: true, subtree: true });
     totpObserver.observe(document.body, { childList: true, subtree: true });
   }
 
-  console.log('[ConfPass Content] Initialized with TOTP support');
+  console.log('[ConfPass Content] Initialized with TOTP and Auto-Save support (SPA enabled)');
 })();

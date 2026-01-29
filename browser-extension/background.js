@@ -93,4 +93,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     callAPI('/get_addresses', {}).then(sendResponse);
     return true;
   }
+
+  // Auto-save: Check for duplicate entries
+  if (message.type === 'check_duplicate') {
+    callAPI('/check_duplicate', message.data).then(sendResponse);
+    return true;
+  }
+
+  // Auto-save: Save credential (accounts, cards, addresses)
+  if (message.type === 'save_credential') {
+    const { type: category, ...data } = message.data;
+
+    if (category === 'accounts') {
+      // For accounts, use existing save_password endpoint
+      callAPI('/save_password', {
+        title: data.title,
+        username: data.username,
+        password: data.password,
+        url: data.url
+      }).then(sendResponse);
+    } else {
+      // For cards and addresses, use save_entry with JSON notes
+      const entryData = {
+        title: data.title,
+        username: category === 'bank_cards' ? data.cardNumber : (data.street || ''),
+        password: category === 'bank_cards' ? (data.cvv || '') : '',
+        url: data.url || '',
+        category: category,
+        notes: JSON.stringify(data)
+      };
+      callAPI('/save_entry', entryData).then(sendResponse);
+    }
+    return true;
+  }
 });

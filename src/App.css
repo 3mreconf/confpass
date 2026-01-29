@@ -713,6 +713,22 @@ body::before {
   text-transform: uppercase;
 }
 
+.version-badge {
+  font-size: 0.65rem;
+  background: var(--accent-muted);
+  color: var(--accent);
+  padding: 0.1rem 0.4rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(245, 158, 11, 0.3);
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  box-shadow: 0 0 10px rgba(245, 158, 11, 0.1);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 .lock-button {
   background: transparent;
   border: 1px solid transparent;
