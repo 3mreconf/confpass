@@ -1774,6 +1774,80 @@ async fn generate_and_save_auth_token() -> Result<(), String> {
     Ok(())
 }
 
+fn register_native_messaging_host() -> Result<(), String> {
+    use winreg::enums::*;
+    use winreg::RegKey;
+
+    // Get the path to the native host executable
+    let exe_path = std::env::current_exe()
+        .map_err(|e| format!("Exe path alınamadı: {}", e))?;
+
+    let exe_dir = exe_path.parent()
+        .ok_or_else(|| "Exe dizini bulunamadı".to_string())?;
+
+    let native_host_path = exe_dir.join("confpass-native-host.exe");
+
+    // Check if native host exists
+    if !native_host_path.exists() {
+        eprintln!("[Native Messaging] Native host bulunamadı: {:?}", native_host_path);
+        return Ok(()); // Don't fail, just skip
+    }
+
+    // Create manifest JSON
+    let manifest = serde_json::json!({
+        "name": "com.confpass.password",
+        "description": "ConfPass Password Manager Native Messaging Host",
+        "path": native_host_path.to_string_lossy().replace("/", "\\"),
+        "type": "stdio",
+        "allowed_origins": [
+            "chrome-extension://hhaieidomjambbcgconfnefkpffjoeoa/"
+        ]
+    });
+
+    // Save manifest to app data directory
+    let app_data = get_vault_path()?
+        .parent()
+        .ok_or_else(|| "App data dizini bulunamadı".to_string())?
+        .to_path_buf();
+
+    let manifest_path = app_data.join("com.confpass.password.json");
+
+    let manifest_str = serde_json::to_string_pretty(&manifest)
+        .map_err(|e| format!("Manifest JSON oluşturulamadı: {}", e))?;
+
+    fs::write(&manifest_path, &manifest_str)
+        .map_err(|e| format!("Manifest dosyası yazılamadı: {}", e))?;
+
+    let manifest_path_str = manifest_path.to_string_lossy().replace("/", "\\");
+
+    // Register for Chrome
+    if let Ok(hkcu) = RegKey::predef(HKEY_CURRENT_USER)
+        .create_subkey("Software\\Google\\Chrome\\NativeMessagingHosts\\com.confpass.password")
+    {
+        let _ = hkcu.0.set_value("", &manifest_path_str);
+        eprintln!("[Native Messaging] Chrome için kaydedildi");
+    }
+
+    // Register for Edge
+    if let Ok(hkcu) = RegKey::predef(HKEY_CURRENT_USER)
+        .create_subkey("Software\\Microsoft\\Edge\\NativeMessagingHosts\\com.confpass.password")
+    {
+        let _ = hkcu.0.set_value("", &manifest_path_str);
+        eprintln!("[Native Messaging] Edge için kaydedildi");
+    }
+
+    // Register for Chromium
+    if let Ok(hkcu) = RegKey::predef(HKEY_CURRENT_USER)
+        .create_subkey("Software\\Chromium\\NativeMessagingHosts\\com.confpass.password")
+    {
+        let _ = hkcu.0.set_value("", &manifest_path_str);
+        eprintln!("[Native Messaging] Chromium için kaydedildi");
+    }
+
+    eprintln!("[Native Messaging] Kayıt tamamlandı: {:?}", manifest_path);
+    Ok(())
+}
+
 async fn start_http_server() {
     let cors = CorsLayer::new()
         .allow_origin(Any)
@@ -1781,7 +1855,7 @@ async fn start_http_server() {
         .allow_headers(Any);
 
     let router = Router::new()
-        .route("/ping", get(|| async { Json(json!({"status": "ok"})) }))
+        .route("/ping", get(|| async { Json(json!({"status": "ok"})) }).post(|| async { Json(json!({"status": "ok"})) }))
         .route("/get_password", post(get_password_handler))
         .route("/save_password", post(save_password_handler))
         .route("/passkey_detected", post(passkey_detected_handler))
@@ -4448,6 +4522,11 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            // Register native messaging host for browser extension
+            if let Err(e) = register_native_messaging_host() {
+                eprintln!("Failed to register native messaging host: {}", e);
+            }
 
             std::thread::spawn(move || {
                 if let Ok(rt) = tokio::runtime::Runtime::new() {
