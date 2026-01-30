@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import type { PasswordStrengthResult } from '../types';
 import { clearClipboard } from '../utils';
-import { Copy, Trash2, Clock, RefreshCw } from 'lucide-react';
+import { Copy, Trash2, Clock, RefreshCw, Check, Shield, X } from 'lucide-react';
 import './PasswordGeneratorModal.css';
 
 interface PasswordGeneratorModalProps {
@@ -52,14 +52,12 @@ export default function PasswordGeneratorModal({ onClose, showToast }: PasswordG
   const [includeNumbers, setIncludeNumbers] = useState(true);
   const [includeSymbols, setIncludeSymbols] = useState(true);
   const [generatedPassword, setGeneratedPassword] = useState('');
-  const [displayPassword, setDisplayPassword] = useState('');
   const [strength, setStrength] = useState<PasswordStrengthResult | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [lengthChanged, setLengthChanged] = useState(false);
+  const [copied, setCopied] = useState(false);
   const [history, setHistory] = useState<PasswordHistoryItem[]>([]);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
-  // Load history on mount
   useEffect(() => {
     setHistory(getPasswordHistory());
   }, []);
@@ -86,7 +84,7 @@ export default function PasswordGeneratorModal({ onClose, showToast }: PasswordG
 
   const generate = useCallback(async () => {
     setIsGenerating(true);
-    setDisplayPassword('');
+    setCopied(false);
 
     try {
       const pwd = await invoke<string>('generate_password', {
@@ -102,19 +100,9 @@ export default function PasswordGeneratorModal({ onClose, showToast }: PasswordG
       const strengthResult = await invoke<PasswordStrengthResult>('check_password_strength', { password: pwd });
       setStrength(strengthResult);
 
-      // Save to history
       addToHistory(pwd, strengthResult.strength);
 
-      let currentIndex = 0;
-      const typingInterval = setInterval(() => {
-        if (currentIndex < pwd.length) {
-          setDisplayPassword(pwd.substring(0, currentIndex + 1));
-          currentIndex++;
-        } else {
-          clearInterval(typingInterval);
-          setIsGenerating(false);
-        }
-      }, 30);
+      setTimeout(() => setIsGenerating(false), 300);
     } catch (error) {
       console.error('Error generating password:', error);
       setIsGenerating(false);
@@ -130,6 +118,9 @@ export default function PasswordGeneratorModal({ onClose, showToast }: PasswordG
         if (itemId) {
           setCopiedId(itemId);
           setTimeout(() => setCopiedId(null), 2000);
+        } else {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 2000);
         }
       } catch (error) {
         console.error('Copy failed:', error);
@@ -160,24 +151,23 @@ export default function PasswordGeneratorModal({ onClose, showToast }: PasswordG
     const diffDays = Math.floor(diffMs / 86400000);
 
     if (diffMins < 1) return 'Az önce';
-    if (diffMins < 60) return `${diffMins} dakika önce`;
-    if (diffHours < 24) return `${diffHours} saat önce`;
+    if (diffMins < 60) return `${diffMins} dk önce`;
+    if (diffHours < 24) return `${diffHours} sa önce`;
     if (diffDays < 7) return `${diffDays} gün önce`;
 
     return date.toLocaleDateString('tr-TR', {
       day: 'numeric',
       month: 'short',
-      year: date.getFullYear() !== now.getFullYear() ? 'numeric' : undefined,
     });
   };
 
-  const getStrengthColor = (strengthStr: string) => {
-    switch (strengthStr.toLowerCase()) {
-      case 'çok güçlü': return 'var(--success)';
-      case 'güçlü': return 'var(--success)';
-      case 'orta': return 'var(--warning)';
-      case 'zayıf': return 'var(--danger)';
-      default: return 'var(--text-tertiary)';
+  const getStrengthInfo = (strengthStr: string) => {
+    switch (strengthStr?.toLowerCase()) {
+      case 'çok güçlü': return { color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', percent: 100, label: 'Çok Güçlü' };
+      case 'güçlü': return { color: '#10b981', bg: 'rgba(16, 185, 129, 0.15)', percent: 75, label: 'Güçlü' };
+      case 'orta': return { color: '#f59e0b', bg: 'rgba(245, 158, 11, 0.15)', percent: 50, label: 'Orta' };
+      case 'zayıf': return { color: '#ef4444', bg: 'rgba(239, 68, 68, 0.15)', percent: 25, label: 'Zayıf' };
+      default: return { color: '#6b7280', bg: 'rgba(107, 114, 128, 0.15)', percent: 0, label: '-' };
     }
   };
 
@@ -185,191 +175,210 @@ export default function PasswordGeneratorModal({ onClose, showToast }: PasswordG
     generate();
   }, []);
 
-  useEffect(() => {
-    if (generatedPassword && !isGenerating) {
-      setDisplayPassword(generatedPassword);
-    }
-  }, [generatedPassword, isGenerating]);
+  const strengthInfo = getStrengthInfo(strength?.strength || '');
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content generator-modal-content" onClick={(e) => e.stopPropagation()}>
-        <h2>Şifre Oluşturucu</h2>
+    <div className="modal-overlay">
+      <div className="pwd-gen-modal">
+        {/* Header */}
+        <div className="pwd-gen-header">
+          <div className="pwd-gen-title">
+            <Shield size={24} />
+            <h2>Şifre Oluşturucu</h2>
+          </div>
+          <button className="pwd-gen-close" onClick={onClose}>
+            <X size={20} />
+          </button>
+        </div>
 
         {/* Tabs */}
-        <div className="generator-tabs">
+        <div className="pwd-gen-tabs">
           <button
-            className={`generator-tab ${activeTab === 'generate' ? 'active' : ''}`}
+            className={`pwd-gen-tab ${activeTab === 'generate' ? 'active' : ''}`}
             onClick={() => setActiveTab('generate')}
           >
             <RefreshCw size={16} />
             Oluştur
           </button>
           <button
-            className={`generator-tab ${activeTab === 'history' ? 'active' : ''}`}
+            className={`pwd-gen-tab ${activeTab === 'history' ? 'active' : ''}`}
             onClick={() => setActiveTab('history')}
           >
             <Clock size={16} />
             Geçmiş
-            {history.length > 0 && (
-              <span className="history-badge">{history.length}</span>
-            )}
+            {history.length > 0 && <span className="pwd-gen-badge">{history.length}</span>}
           </button>
         </div>
 
         {activeTab === 'generate' ? (
-          <>
-            <div className="form-group">
-              <label className="length-label">
-                <span className="length-text">Uzunluk: <span className={`length-value ${lengthChanged ? 'pulse' : ''}`}>{length}</span></span>
-              </label>
-              <div className="slider-container">
+          <div className="pwd-gen-content">
+            {/* Password Display */}
+            <div className="pwd-display-card">
+              <div className="pwd-display-inner">
+                <span className={`pwd-text ${isGenerating ? 'generating' : ''}`}>
+                  {generatedPassword || '••••••••••••••••'}
+                </span>
+              </div>
+              <div className="pwd-display-actions">
+                <button
+                  className={`pwd-copy-btn ${copied ? 'copied' : ''}`}
+                  onClick={() => copyToClipboard()}
+                  title="Kopyala"
+                >
+                  {copied ? <Check size={18} /> : <Copy size={18} />}
+                  {copied ? 'Kopyalandı' : 'Kopyala'}
+                </button>
+                <button
+                  className={`pwd-regenerate-btn ${isGenerating ? 'spinning' : ''}`}
+                  onClick={generate}
+                  disabled={isGenerating}
+                  title="Yeniden Oluştur"
+                >
+                  <RefreshCw size={18} />
+                </button>
+              </div>
+            </div>
+
+            {/* Strength Indicator */}
+            <div className="pwd-strength-section">
+              <div className="pwd-strength-bar-container">
+                <div
+                  className="pwd-strength-bar-fill"
+                  style={{
+                    width: `${strengthInfo.percent}%`,
+                    background: strengthInfo.color
+                  }}
+                />
+              </div>
+              <div className="pwd-strength-label" style={{ color: strengthInfo.color }}>
+                {strengthInfo.label}
+              </div>
+            </div>
+
+            {/* Length Slider */}
+            <div className="pwd-option-section">
+              <div className="pwd-length-header">
+                <span className="pwd-option-label">Uzunluk</span>
+                <span className="pwd-length-value">{length}</span>
+              </div>
+              <div className="pwd-slider-container">
                 <input
                   type="range"
                   min="8"
                   max="64"
                   value={length}
-                  className="length-slider"
-                  onChange={(e) => {
-                    const newLength = Number(e.target.value);
-                    setLength(newLength);
-                    setLengthChanged(true);
-                    setTimeout(() => setLengthChanged(false), 600);
+                  onChange={(e) => setLength(Number(e.target.value))}
+                  className="pwd-slider"
+                  style={{
+                    background: `linear-gradient(to right, var(--accent) 0%, var(--accent) ${((length - 8) / 56) * 100}%, var(--bg-tertiary) ${((length - 8) / 56) * 100}%, var(--bg-tertiary) 100%)`
                   }}
                 />
+                <div className="pwd-slider-labels">
+                  <span>8</span>
+                  <span>64</span>
+                </div>
               </div>
             </div>
-            <div className="form-group">
-              <label>
+
+            {/* Character Options */}
+            <div className="pwd-options-grid">
+              <label className={`pwd-toggle-option ${includeUppercase ? 'active' : ''}`}>
+                <span className="pwd-toggle-text">ABC</span>
+                <span className="pwd-toggle-label">Büyük Harf</span>
                 <input
                   type="checkbox"
                   checked={includeUppercase}
                   onChange={(e) => setIncludeUppercase(e.target.checked)}
                 />
-                Büyük Harfler (A-Z)
+                <span className="pwd-toggle-switch" />
               </label>
-            </div>
-            <div className="form-group">
-              <label>
+
+              <label className={`pwd-toggle-option ${includeLowercase ? 'active' : ''}`}>
+                <span className="pwd-toggle-text">abc</span>
+                <span className="pwd-toggle-label">Küçük Harf</span>
                 <input
                   type="checkbox"
                   checked={includeLowercase}
                   onChange={(e) => setIncludeLowercase(e.target.checked)}
                 />
-                Küçük Harfler (a-z)
+                <span className="pwd-toggle-switch" />
               </label>
-            </div>
-            <div className="form-group">
-              <label>
+
+              <label className={`pwd-toggle-option ${includeNumbers ? 'active' : ''}`}>
+                <span className="pwd-toggle-text">123</span>
+                <span className="pwd-toggle-label">Sayılar</span>
                 <input
                   type="checkbox"
                   checked={includeNumbers}
                   onChange={(e) => setIncludeNumbers(e.target.checked)}
                 />
-                Sayılar (0-9)
+                <span className="pwd-toggle-switch" />
               </label>
-            </div>
-            <div className="form-group">
-              <label>
+
+              <label className={`pwd-toggle-option ${includeSymbols ? 'active' : ''}`}>
+                <span className="pwd-toggle-text">#$%</span>
+                <span className="pwd-toggle-label">Semboller</span>
                 <input
                   type="checkbox"
                   checked={includeSymbols}
                   onChange={(e) => setIncludeSymbols(e.target.checked)}
                 />
-                Özel Karakterler (!@#$...)
+                <span className="pwd-toggle-switch" />
               </label>
             </div>
-            <div className="form-group">
-              <label>Oluşturulan Şifre:</label>
-              <div className="password-display">
-                <div className="password-wrapper">
-                  <input
-                    type="text"
-                    value={displayPassword}
-                    readOnly
-                    className={`generated-password ${isGenerating ? 'generating' : 'generated'}`}
-                  />
-                  {isGenerating && <span className="typing-cursor">|</span>}
-                  <button onClick={() => copyToClipboard()} className="password-copy-icon" title="Kopyala">
-                    <Copy size={18} />
-                  </button>
-                </div>
-              </div>
-            </div>
-            {strength && (
-              <div className="strength-indicator" style={{ marginBottom: '2rem' }}>
-                <div className={`strength-bar ${strength.strength.toLowerCase().replace(/\s+/g, '-').replace('çok-güçlü', 'very-strong').replace('güçlü', 'strong').replace('orta', 'medium').replace('zayıf', 'weak')} animate`}>
-                  <div className="strength-label">Güç Seviyesi: {strength.strength}</div>
-                </div>
-              </div>
-            )}
-            <div className="modal-actions">
-              <button onClick={generate} className="generate-button">Yeniden Oluştur</button>
-              <button onClick={onClose} className="cancel-button">Kapat</button>
-            </div>
-          </>
+          </div>
         ) : (
-          <div className="history-container">
+          <div className="pwd-history-content">
             {history.length === 0 ? (
-              <div className="history-empty">
-                <Clock size={48} strokeWidth={1} />
-                <p>Henüz şifre oluşturulmadı</p>
+              <div className="pwd-history-empty">
+                <Clock size={48} strokeWidth={1.5} />
+                <p>Henüz şifre yok</p>
                 <span>Oluşturduğunuz şifreler burada görünecek</span>
               </div>
             ) : (
               <>
-                <div className="history-header">
-                  <span className="history-count">{history.length} şifre</span>
-                  <button className="history-clear-btn" onClick={clearHistory}>
+                <div className="pwd-history-header">
+                  <span>{history.length} şifre kayıtlı</span>
+                  <button className="pwd-clear-btn" onClick={clearHistory}>
                     <Trash2 size={14} />
-                    Tümünü Temizle
+                    Temizle
                   </button>
                 </div>
-                <div className="history-list">
-                  {history.map((item) => (
-                    <div key={item.id} className="history-item">
-                      <div className="history-item-main">
-                        <div className="history-item-password">
-                          <code>{item.password}</code>
+                <div className="pwd-history-list">
+                  {history.map((item) => {
+                    const itemStrength = getStrengthInfo(item.strength);
+                    return (
+                      <div key={item.id} className="pwd-history-item">
+                        <div className="pwd-history-main">
+                          <code className="pwd-history-password">{item.password}</code>
+                          <div className="pwd-history-meta">
+                            <span className="pwd-history-length">{item.length} karakter</span>
+                            <span className="pwd-history-dot">•</span>
+                            <span style={{ color: itemStrength.color }}>{itemStrength.label}</span>
+                            <span className="pwd-history-dot">•</span>
+                            <span className="pwd-history-date">{formatDate(item.createdAt)}</span>
+                          </div>
                         </div>
-                        <div className="history-item-meta">
-                          <span className="history-item-length">{item.length} karakter</span>
-                          <span
-                            className="history-item-strength"
-                            style={{ color: getStrengthColor(item.strength) }}
+                        <div className="pwd-history-actions">
+                          <button
+                            className={`pwd-history-btn ${copiedId === item.id ? 'copied' : ''}`}
+                            onClick={() => copyToClipboard(item.password, item.id)}
                           >
-                            {item.strength}
-                          </span>
-                          <span className="history-item-date">{formatDate(item.createdAt)}</span>
+                            {copiedId === item.id ? <Check size={16} /> : <Copy size={16} />}
+                          </button>
+                          <button
+                            className="pwd-history-btn delete"
+                            onClick={() => deleteFromHistory(item.id)}
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
                       </div>
-                      <div className="history-item-actions">
-                        <button
-                          className={`history-action-btn copy ${copiedId === item.id ? 'copied' : ''}`}
-                          onClick={() => copyToClipboard(item.password, item.id)}
-                          title="Kopyala"
-                        >
-                          <Copy size={16} />
-                        </button>
-                        <button
-                          className="history-action-btn delete"
-                          onClick={() => deleteFromHistory(item.id)}
-                          title="Sil"
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </>
             )}
-            <div className="modal-actions">
-              <button onClick={() => setActiveTab('generate')} className="generate-button">
-                Yeni Şifre Oluştur
-              </button>
-              <button onClick={onClose} className="cancel-button">Kapat</button>
-            </div>
           </div>
         )}
       </div>

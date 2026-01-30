@@ -581,6 +581,8 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
             state.entries = loaded_state.entries;
             state.master_password_hash = loaded_state.master_password_hash;
             state.encryption_salt = loaded_state.encryption_salt;
+            state.folders = loaded_state.folders;
+            state.tags = loaded_state.tags;
             state.vault_locked = false;
             state.failed_attempts = 0;
             state.last_attempt_time = None;
@@ -853,12 +855,8 @@ fn delete_folder(id: String) -> Result<(), String> {
     // Remove folder
     state.folders.retain(|f| f.id != id);
 
-    // Clear folder_id from entries that were in this folder
-    for entry in state.entries.values_mut() {
-        if entry.folder_id.as_ref() == Some(&id) {
-            entry.folder_id = None;
-        }
-    }
+    // Delete entries that were in this folder
+    state.entries.retain(|_, entry| entry.folder_id.as_ref() != Some(&id));
 
     let master_pwd = get_master_password()?;
     let state_snapshot = state.clone();

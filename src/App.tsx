@@ -69,11 +69,11 @@ const FolderModal = memo(({ folder, folders, onClose, onCreate, onUpdate }: Fold
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content folder-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal-content folder-modal">
         <div className="modal-header">
           <h3>{folder ? 'Klasörü Düzenle' : 'Yeni Klasör'}</h3>
-          <button className="modal-close" onClick={onClose}>
+          <button type="button" className="modal-close-btn" onClick={onClose}>
             <X size={20} />
           </button>
         </div>
@@ -385,7 +385,7 @@ function App() {
 
   const moveEntryToFolder = useCallback(async (entryId: string, folderId: string | null) => {
     try {
-      await invoke('move_entry_to_folder', { entryId, folderId });
+      await invoke('move_entry_to_folder', { entryId: entryId, folderId: folderId });
       await loadEntries();
       showToast(folderId ? 'Kayıt klasöre taşındı' : 'Kayıt klasörden çıkarıldı', 'success');
     } catch (error) {
@@ -612,7 +612,14 @@ function App() {
       const matchesView = viewMode === 'all' || viewMode === 'entries' || favorites.has(entry.id);
 
       // Folder filtering logic
-      const matchesFolder = !selectedFolder || entry.folder_id === selectedFolder;
+      // Klasör seçiliyse: sadece o klasördeki kayıtları göster
+      // "Tüm Kayıtlar" seçiliyse: tüm kayıtları göster (klasörlü + klasörsüz)
+      // Kategori seçiliyse (hesaplar, kartlar vs.): sadece klasörsüz kayıtları göster
+      const matchesFolder = selectedFolder
+        ? entry.folder_id === selectedFolder
+        : selectedCategory === 'all'
+          ? true
+          : !entry.folder_id;
 
       // TOTP filtering logic
       const hasTotp = hasTotpData(entry);
@@ -1192,16 +1199,51 @@ function App() {
         <>
         <div className="main-header">
           <h1 className="main-title">
-            {viewMode === 'favorites' 
-              ? 'Favoriler' 
-              : CATEGORY_NAMES[selectedCategory] || 'Tüm Girişler'}
+            {selectedFolder
+              ? (folders.find(f => f.id === selectedFolder)?.name || 'Klasör')
+              : viewMode === 'favorites'
+                ? 'Favoriler'
+                : CATEGORY_NAMES[selectedCategory] || 'Tüm Girişler'}
             {filteredEntries.length > 0 && (
               <span className="main-title-count"> ({filteredEntries.length})</span>
             )}
           </h1>
           <div className="main-header-actions">
             <div className="add-button-wrapper">
-              {selectedCategory === 'all' ? (
+              {selectedFolder ? (
+                <>
+                  <button
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowAddDropdown(!showAddDropdown);
+                    }}
+                    className="add-button-primary"
+                  >
+                    <Plus size={18} />
+                    Klasöre Ekle
+                    <ChevronDown size={14} className={showAddDropdown ? 'open' : ''} />
+                  </button>
+                  {showAddDropdown && (
+                    <div className="add-dropdown-menu" onClick={(e) => e.stopPropagation()}>
+                      {CATEGORY_OPTIONS.filter(opt => opt.value !== 'passkeys' && opt.value !== 'authenticator').map(option => (
+                        <button
+                          key={option.value}
+                          onClick={() => {
+                            setShowAddModal(true);
+                            setShowAddDropdown(false);
+                            setTimeout(() => {
+                              const event = new CustomEvent('setAddCategory', { detail: option.value });
+                              window.dispatchEvent(event);
+                            }, 100);
+                          }}
+                        >
+                          {option.label}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </>
+              ) : selectedCategory === 'all' ? (
                 <>
                   <button
                     onClick={(e) => {
@@ -1381,6 +1423,7 @@ function App() {
           }}
           showToast={showToast}
           initialCategory={selectedCategory === 'all' || selectedCategory === 'favorites' ? 'accounts' : selectedCategory}
+          selectedFolder={selectedFolder}
         />
       )}
 
@@ -1416,8 +1459,11 @@ function App() {
       )}
 
       {showAddPasskey && (
-        <div className="modal-overlay" onClick={() => setShowAddPasskey(false)}>
-          <div className="modal-content modal-card-form" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="modal-content modal-card-form">
+            <button type="button" className="modal-close-btn" onClick={() => setShowAddPasskey(false)} style={{ position: 'absolute', top: '16px', right: '16px' }}>
+              <X size={20} />
+            </button>
             <AddPasskeyModal
               onClose={() => {
                 setShowAddPasskey(false);
@@ -1464,8 +1510,11 @@ function App() {
       )}
 
       {detectedPasskey && (
-        <div className="modal-overlay" onClick={() => setDetectedPasskey(null)}>
-          <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxWidth: '500px', position: 'relative' }}>
+            <button type="button" className="modal-close-btn" onClick={() => setDetectedPasskey(null)} style={{ position: 'absolute', top: '16px', right: '16px' }}>
+              <X size={20} />
+            </button>
             <h2>Geçiş Anahtarı Algılandı</h2>
             <div style={{ marginBottom: '1.5rem' }}>
               <p style={{ marginBottom: '1rem', color: 'var(--text-secondary)' }}>
@@ -1558,8 +1607,8 @@ function App() {
       )}
 
       {confirmDialog && (
-        <div className="modal-overlay" onClick={() => setConfirmDialog(null)}>
-          <div className="confirm-dialog" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-overlay">
+          <div className="confirm-dialog">
             <div className="confirm-dialog-header">
               <AlertCircle size={24} />
               <h3>Onay</h3>
@@ -1654,8 +1703,11 @@ function AddEntryModal({ onClose, showToast, initialCategory = 'accounts', selec
   }, []);
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content modal-card-form" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal-content modal-card-form">
+        <button type="button" className="modal-close-btn" onClick={onClose} style={{ position: 'absolute', top: '16px', right: '16px' }}>
+          <X size={20} />
+        </button>
         {category === 'accounts' && <AddAccountModal onClose={onClose} showToast={showToast} folderId={selectedFolder} />}
         {category === 'bank_cards' && <AddBankCardModal onClose={onClose} showToast={showToast} folderId={selectedFolder} />}
         {category === 'documents' && <AddDocumentModal onClose={onClose} showToast={showToast} folderId={selectedFolder} />}
@@ -1710,6 +1762,7 @@ function AddAccountModal({ onClose, showToast, folderId }: { onClose: () => void
         url: url.trim() || null,
         notes: notes.trim() || null,
         category: 'accounts',
+        extraFields: null,
         folderId: folderId || null,
       });
 
@@ -1812,24 +1865,56 @@ function AddAccountModal({ onClose, showToast, folderId }: { onClose: () => void
 function AddBankCardModal({ onClose, showToast, folderId }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void; folderId?: string | null }) {
   const [cardName, setCardName] = useState('');
   const [cardNumber, setCardNumber] = useState('');
-  const [expiryMonth, setExpiryMonth] = useState('');
-  const [expiryYear, setExpiryYear] = useState('');
+  const [expiry, setExpiry] = useState('');
   const [cvv, setCvv] = useState('');
   const [cardholderName, setCardholderName] = useState('');
-  const [cardType, setCardType] = useState('Visa');
-  const [showCardNumber, setShowCardNumber] = useState(false);
-  const [showCvv, setShowCvv] = useState(false);
+  const [cardType, setCardType] = useState('visa');
+  const [isFlipped, setIsFlipped] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [focusedField, setFocusedField] = useState<string | null>(null);
+
+  const cardGradients: Record<string, string> = {
+    visa: 'linear-gradient(135deg, #1a1f71 0%, #2d35a8 50%, #1a1f71 100%)',
+    mastercard: 'linear-gradient(135deg, #eb001b 0%, #f79e1b 100%)',
+    amex: 'linear-gradient(135deg, #006fcf 0%, #00a1e0 100%)',
+    discover: 'linear-gradient(135deg, #ff6000 0%, #ffab00 100%)',
+    other: 'linear-gradient(135deg, #2d3436 0%, #636e72 100%)',
+  };
 
   const formatCardNumber = (value: string) => {
-    const cleaned = value.replace(/\s/g, '').replace(/\D/g, '');
-    const formatted = cleaned.match(/.{1,4}/g)?.join(' ') || cleaned;
-    return formatted.slice(0, 19);
+    const cleaned = value.replace(/\D/g, '');
+    const groups = cleaned.match(/.{1,4}/g) || [];
+    return groups.join(' ').slice(0, 19);
+  };
+
+  const formatExpiry = (value: string) => {
+    const cleaned = value.replace(/\D/g, '');
+    if (cleaned.length >= 2) {
+      return cleaned.slice(0, 2) + '/' + cleaned.slice(2, 4);
+    }
+    return cleaned;
+  };
+
+  const detectCardType = (number: string) => {
+    const cleaned = number.replace(/\D/g, '');
+    if (/^4/.test(cleaned)) return 'visa';
+    if (/^5[1-5]/.test(cleaned) || /^2[2-7]/.test(cleaned)) return 'mastercard';
+    if (/^3[47]/.test(cleaned)) return 'amex';
+    if (/^6(?:011|5)/.test(cleaned)) return 'discover';
+    return 'other';
   };
 
   const handleCardNumberChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const formatted = formatCardNumber(e.target.value);
     setCardNumber(formatted);
+    setCardType(detectCardType(formatted));
+  };
+
+  const handleExpiryChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const value = e.target.value.replace(/[^\d/]/g, '');
+    if (value.length <= 5) {
+      setExpiry(formatExpiry(value.replace('/', '')));
+    }
   };
 
   const handleCvvChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1837,14 +1922,25 @@ function AddBankCardModal({ onClose, showToast, folderId }: { onClose: () => voi
     setCvv(value);
   };
 
+  const displayCardNumber = () => {
+    const cleaned = cardNumber.replace(/\s/g, '');
+    const padded = cleaned.padEnd(16, '•');
+    return padded.match(/.{1,4}/g)?.join(' ') || '•••• •••• •••• ••••';
+  };
+
   const handleSubmit = async () => {
-    if (!cardName.trim() || !cardNumber.trim() || !expiryMonth || !expiryYear || !cvv.trim() || !cardholderName.trim()) {
+    if (!cardName.trim() || !cardNumber.trim() || !expiry || !cvv.trim() || !cardholderName.trim()) {
       showToast('Lütfen tüm zorunlu alanları doldurun', 'error');
       return;
     }
 
     if (cardNumber.replace(/\s/g, '').length < 13) {
       showToast('Kart numarası en az 13 haneli olmalıdır', 'error');
+      return;
+    }
+
+    if (expiry.length !== 5) {
+      showToast('Geçerli bir son kullanma tarihi girin (AA/YY)', 'error');
       return;
     }
 
@@ -1855,7 +1951,7 @@ function AddBankCardModal({ onClose, showToast, folderId }: { onClose: () => voi
 
     const cardData = {
       cardNumber: cardNumber.replace(/\s/g, ''),
-      expiry: `${expiryMonth}/${expiryYear}`,
+      expiry,
       cvv,
       cardholderName,
       cardType,
@@ -1890,7 +1986,7 @@ function AddBankCardModal({ onClose, showToast, folderId }: { onClose: () => voi
     } catch (error) {
       const errorStr = String(error || '');
       let errorMessage = 'Kart eklenirken hata oluştu';
-      
+
       if (errorStr.includes('Kasa kilitli')) {
         errorMessage = 'Kasa kilitli. Lütfen önce kasa kilidini açın.';
       } else if (errorStr.includes('kaydedilemedi')) {
@@ -1900,359 +1996,160 @@ function AddBankCardModal({ onClose, showToast, folderId }: { onClose: () => voi
       } else if (errorStr) {
         errorMessage = errorStr;
       }
-      
+
       showToast(errorMessage, 'error');
       setIsSubmitting(false);
     }
   };
 
   return (
-    <>
-      <h2>Banka Kartı Ekle</h2>
+    <div className="bank-card-modal">
+      <h2>Yeni Kart Ekle</h2>
 
-      <div className="bank-cards-container" style={{
-        position: 'relative',
-        marginBottom: '2rem',
-        height: '420px',
-        perspective: '1200px',
-      }}>
-        <div className="bank-card-front" style={{ 
-          background: `linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%)`,
-          borderRadius: '16px',
-          padding: '2rem',
-          position: 'relative',
-          width: '100%',
-          height: '380px',
-          overflow: 'visible',
-          boxShadow: '0 8px 32px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255, 255, 255, 0.1)',
-          transform: 'perspective(1000px) rotateY(0deg)',
-          transition: 'all 0.3s',
-        }}>
-          <div style={{
-            position: 'absolute',
-            top: '1rem',
-            right: '1rem',
-            fontSize: '0.75rem',
-            color: 'rgba(255, 255, 255, 0.6)',
-            fontWeight: 600,
-          }}>
-            {cardType}
-          </div>
-          
-          <div style={{
-            marginTop: '2rem',
-            marginBottom: '1rem',
-          }}>
-            <div style={{
-              fontSize: '0.7rem',
-              color: 'rgba(255, 255, 255, 0.5)',
-              marginBottom: '0.5rem',
-            }}>
-              Kart numarası
+      {/* 3D Card Preview */}
+      <div className="card-preview-container">
+        <div className={`card-3d ${isFlipped ? 'flipped' : ''}`}>
+          {/* Front */}
+          <div className="card-face card-front" style={{ background: cardGradients[cardType] }}>
+            <div className="card-shine"></div>
+            <div className="card-chip">
+              <div className="chip-line"></div>
+              <div className="chip-line"></div>
+              <div className="chip-line"></div>
+              <div className="chip-line"></div>
             </div>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}>
-              <input
-                type={showCardNumber ? 'text' : 'password'}
-                value={cardNumber}
-                onChange={handleCardNumberChange}
-                placeholder="1234 5678 9012 3456"
-                maxLength={19}
-                style={{
-                  flex: 1,
-                  background: 'rgba(0, 0, 0, 0.3)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  padding: '0.75rem',
-                  color: 'rgba(255, 255, 255, 0.95)',
-                  fontSize: '1rem',
-                  letterSpacing: '2px',
-                  fontFamily: 'monospace',
-                  fontWeight: 600,
-                  outline: 'none',
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowCardNumber(!showCardNumber)}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  padding: '0.5rem',
-                  cursor: 'pointer',
-                  color: 'rgba(255, 255, 255, 0.8)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                {showCardNumber ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    await clearClipboard(cardNumber.replace(/\s/g, ''), 60000);
-                    showToast('Kart numarası kopyalandı', 'success');
-                  } catch (error) {
-                    showToast('Kopyalama başarısız', 'error');
-                  }
-                }}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  padding: '0.5rem',
-                  cursor: 'pointer',
-                  color: 'rgba(255, 255, 255, 0.8)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Copy size={18} />
-              </button>
+            <div className="card-contactless">
+              <svg viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8z" opacity="0.3"/>
+                <path d="M7 12c0-2.76 2.24-5 5-5v2c-1.66 0-3 1.34-3 3H7zm5-3c1.66 0 3 1.34 3 3h2c0-2.76-2.24-5-5-5v2z"/>
+              </svg>
             </div>
-          </div>
-
-          <div style={{
-            display: 'flex',
-            gap: '1rem',
-            marginTop: '1.25rem',
-          }}>
-            <div style={{ flex: 1 }}>
-              <div style={{
-                fontSize: '0.7rem',
-                color: 'rgba(255, 255, 255, 0.5)',
-                marginBottom: '0.5rem',
-              }}>
-                AA
+            <div className="card-type-logo">
+              {cardType === 'visa' && <span className="visa-logo">VISA</span>}
+              {cardType === 'mastercard' && <div className="mc-logo"><span></span><span></span></div>}
+              {cardType === 'amex' && <span className="amex-logo">AMEX</span>}
+              {cardType === 'discover' && <span className="discover-logo">DISCOVER</span>}
+              {cardType === 'other' && <span className="other-logo">CARD</span>}
+            </div>
+            <div className={`card-number ${focusedField === 'cardNumber' ? 'focused' : ''}`}>
+              {displayCardNumber()}
+            </div>
+            <div className="card-bottom">
+              <div className="card-holder">
+                <span className="label">Kart Sahibi</span>
+                <span className={`value ${focusedField === 'cardholderName' ? 'focused' : ''}`}>
+                  {cardholderName || 'AD SOYAD'}
+                </span>
               </div>
-              <CustomDropdown
-                value={expiryMonth || 'MM'}
-                onChange={(val) => {
-                  const month = Math.min(12, Math.max(1, parseInt(val) || 0));
-                  setExpiryMonth(month.toString().padStart(2, '0'));
-                }}
-                options={Array.from({ length: 12 }, (_, i) => ({
-                  value: (i + 1).toString().padStart(2, '0'),
-                  label: (i + 1).toString().padStart(2, '0'),
-                }))}
-              />
-            </div>
-            <div style={{ flex: 1 }}>
-              <div style={{
-                fontSize: '0.7rem',
-                color: 'rgba(255, 255, 255, 0.5)',
-                marginBottom: '0.5rem',
-              }}>
-                YYYY
+              <div className="card-expiry">
+                <span className="label">Son Kullanma</span>
+                <span className={`value ${focusedField === 'expiry' ? 'focused' : ''}`}>
+                  {expiry || 'AA/YY'}
+                </span>
               </div>
-              <input
-                type="text"
-                value={expiryYear}
-                onChange={(e) => {
-                  const value = e.target.value.replace(/\D/g, '').slice(0, 4);
-                  setExpiryYear(value);
-                }}
-                placeholder="2025"
-                maxLength={4}
-                style={{
-                  width: '100%',
-                  background: 'rgba(0, 0, 0, 0.3)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  padding: '0.75rem',
-                  color: 'rgba(255, 255, 255, 0.95)',
-                  fontSize: '0.9rem',
-                  fontWeight: 600,
-                  outline: 'none',
-                }}
-              />
             </div>
           </div>
 
-          <div style={{
-            marginTop: '1.25rem',
-          }}>
-            <div style={{
-              fontSize: '0.7rem',
-              color: 'rgba(255, 255, 255, 0.5)',
-              marginBottom: '0.5rem',
-            }}>
-              Kart sahibi
+          {/* Back */}
+          <div className="card-face card-back" style={{ background: cardGradients[cardType] }}>
+            <div className="card-shine"></div>
+            <div className="card-stripe"></div>
+            <div className="card-cvv-section">
+              <div className="cvv-label">CVV</div>
+              <div className={`cvv-band ${focusedField === 'cvv' ? 'focused' : ''}`}>
+                {cvv ? '•'.repeat(cvv.length) : '•••'}
+              </div>
             </div>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}>
-              <input
-                type="text"
-                value={cardholderName}
-                onChange={(e) => setCardholderName(e.target.value.toUpperCase())}
-                placeholder="EMRE YILMAZ"
-                style={{
-                  flex: 1,
-                  background: 'rgba(0, 0, 0, 0.3)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  padding: '0.75rem',
-                  color: 'rgba(255, 255, 255, 0.95)',
-                  fontSize: '0.9rem',
-                  fontWeight: 600,
-                  textTransform: 'uppercase',
-                  outline: 'none',
-                }}
-              />
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    await clearClipboard(cardholderName, 60000);
-                    showToast('Kart sahibi adı kopyalandı', 'success');
-                  } catch (error) {
-                    showToast('Kopyalama başarısız', 'error');
-                  }
-                }}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  padding: '0.5rem',
-                  cursor: 'pointer',
-                  color: 'rgba(255, 255, 255, 0.8)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Copy size={18} />
-              </button>
-              <CustomDropdown
-                value={cardType}
-                onChange={setCardType}
-                options={[
-                  { value: 'Visa', label: 'Visa' },
-                  { value: 'Mastercard', label: 'Mastercard' },
-                  { value: 'American Express', label: 'American Express' },
-                  { value: 'UATP', label: 'UATP' },
-                  { value: 'Diğer', label: 'Diğer' },
-                ]}
-              />
-            </div>
-          </div>
-
-          <div style={{
-            marginTop: '1.25rem',
-          }}>
-            <div style={{
-              fontSize: '0.7rem',
-              color: 'rgba(255, 255, 255, 0.5)',
-              marginBottom: '0.5rem',
-              textTransform: 'uppercase',
-            }}>
-              CVC2/CVV2
-            </div>
-            <div style={{
-              display: 'flex',
-              alignItems: 'center',
-              gap: '0.5rem',
-            }}>
-              <input
-                type={showCvv ? 'text' : 'password'}
-                value={cvv}
-                onChange={handleCvvChange}
-                placeholder="123"
-                maxLength={4}
-                style={{
-                  flex: 1,
-                  background: 'rgba(0, 0, 0, 0.3)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  padding: '0.75rem',
-                  color: 'rgba(255, 255, 255, 0.95)',
-                  fontSize: '1.2rem',
-                  fontFamily: 'monospace',
-                  fontWeight: 700,
-                  letterSpacing: '2px',
-                  textAlign: 'center',
-                  outline: 'none',
-                }}
-              />
-              <button
-                type="button"
-                onClick={() => setShowCvv(!showCvv)}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  padding: '0.5rem',
-                  cursor: 'pointer',
-                  color: 'rgba(255, 255, 255, 0.8)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  transition: 'all 0.2s',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.2)';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = 'rgba(255, 255, 255, 0.1)';
-                }}
-              >
-                {showCvv ? <EyeOff size={18} /> : <Eye size={18} />}
-              </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  try {
-                    await clearClipboard(cvv, 30000);
-                    showToast('CVV kopyalandı (30 saniye sonra temizlenecek)', 'success');
-                  } catch (error) {
-                    showToast('Kopyalama başarısız', 'error');
-                  }
-                }}
-                style={{
-                  background: 'rgba(255, 255, 255, 0.1)',
-                  border: '1px solid rgba(255, 255, 255, 0.2)',
-                  borderRadius: '8px',
-                  padding: '0.5rem',
-                  cursor: 'pointer',
-                  color: 'rgba(255, 255, 255, 0.8)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                }}
-              >
-                <Copy size={18} />
-              </button>
+            <div className="card-back-text">
+              Kartınızın arkasındaki 3 haneli güvenlik kodu
             </div>
           </div>
         </div>
       </div>
 
-      <div className="form-group" style={{ marginTop: '0.5rem' }}>
-        <label>Kart Adı *</label>
-        <input
-          type="text"
-          value={cardName}
-          onChange={(e) => setCardName(e.target.value)}
-          placeholder="örn: Ana Kartım"
-        />
+      {/* Form */}
+      <div className="card-form">
+        <div className="form-row">
+          <div className="form-field full">
+            <label>Kart Adı</label>
+            <input
+              type="text"
+              value={cardName}
+              onChange={(e) => setCardName(e.target.value)}
+              placeholder="Örn: Ana Param"
+              className="card-input"
+            />
+          </div>
+        </div>
+
+        <div className="form-row">
+          <div className="form-field full">
+            <label>Kart Numarası</label>
+            <input
+              type="text"
+              value={cardNumber}
+              onChange={handleCardNumberChange}
+              onFocus={() => { setFocusedField('cardNumber'); setIsFlipped(false); }}
+              onBlur={() => setFocusedField(null)}
+              placeholder="0000 0000 0000 0000"
+              maxLength={19}
+              className="card-input mono"
+            />
+          </div>
+        </div>
+
+        <div className="form-row">
+          <div className="form-field full">
+            <label>Kart Sahibi</label>
+            <input
+              type="text"
+              value={cardholderName}
+              onChange={(e) => setCardholderName(e.target.value.toUpperCase())}
+              onFocus={() => { setFocusedField('cardholderName'); setIsFlipped(false); }}
+              onBlur={() => setFocusedField(null)}
+              placeholder="AD SOYAD"
+              className="card-input uppercase"
+            />
+          </div>
+        </div>
+
+        <div className="form-row two-col">
+          <div className="form-field">
+            <label>Son Kullanma</label>
+            <input
+              type="text"
+              value={expiry}
+              onChange={handleExpiryChange}
+              onFocus={() => { setFocusedField('expiry'); setIsFlipped(false); }}
+              onBlur={() => setFocusedField(null)}
+              placeholder="AA/YY"
+              maxLength={5}
+              className="card-input mono center"
+            />
+          </div>
+          <div className="form-field">
+            <label>CVV</label>
+            <input
+              type="password"
+              value={cvv}
+              onChange={handleCvvChange}
+              onFocus={() => { setFocusedField('cvv'); setIsFlipped(true); }}
+              onBlur={() => setFocusedField(null)}
+              placeholder="•••"
+              maxLength={4}
+              className="card-input mono center"
+            />
+          </div>
+        </div>
       </div>
+
       <div className="modal-actions">
         <button onClick={onClose} className="cancel-button" disabled={isSubmitting}>İptal</button>
         <button onClick={handleSubmit} className="submit-button" disabled={isSubmitting}>
-          {isSubmitting ? 'Kaydediliyor...' : 'Kaydet'}
+          {isSubmitting ? 'Kaydediliyor...' : 'Kartı Kaydet'}
         </button>
       </div>
-    </>
+    </div>
   );
 }
 
@@ -2517,7 +2414,7 @@ function AddAddressModal({ onClose, showToast, folderId }: { onClose: () => void
   );
 }
 
-function AddPasskeyModal({ onClose, showToast }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+function AddPasskeyModal({ onClose, showToast, folderId }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void; folderId?: string | null }) {
   const [serviceName, setServiceName] = useState('');
   const [domain, setDomain] = useState('');
   const [username, setUsername] = useState('');
@@ -2560,6 +2457,7 @@ function AddPasskeyModal({ onClose, showToast }: { onClose: () => void; showToas
         url: url,
         notes: JSON.stringify(passkeyData),
         category: 'passkeys',
+        folderId: folderId,
       });
       
       try {
@@ -2662,7 +2560,7 @@ function AddPasskeyModal({ onClose, showToast }: { onClose: () => void; showToas
   );
 }
 
-function AddNoteModal({ onClose, showToast }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+function AddNoteModal({ onClose, showToast, folderId }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void; folderId?: string | null }) {
   const [noteTitle, setNoteTitle] = useState('');
   const [noteContent, setNoteContent] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -2682,6 +2580,7 @@ function AddNoteModal({ onClose, showToast }: { onClose: () => void; showToast: 
         url: null,
         notes: noteContent.trim(),
         category: 'notes',
+        folderId: folderId,
       });
       try {
         await invoke('log_activity', {
@@ -2750,8 +2649,11 @@ function AddNoteModal({ onClose, showToast }: { onClose: () => void; showToast: 
 function EditEntryModal({ entry, onClose, showToast }: { entry: PasswordEntry; onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content modal-card-form" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-overlay">
+      <div className="modal-content modal-card-form">
+        <button type="button" className="modal-close-btn" onClick={onClose} style={{ position: 'absolute', top: '16px', right: '16px' }}>
+          <X size={20} />
+        </button>
         {entry.category === 'accounts' && <EditAccountModal entry={entry} onClose={onClose} showToast={showToast} />}
         {entry.category === 'bank_cards' && <EditBankCardModal entry={entry} onClose={onClose} showToast={showToast} />}
         {entry.category === 'documents' && <EditDocumentModal entry={entry} onClose={onClose} showToast={showToast} />}
@@ -3855,8 +3757,11 @@ function EditNoteModal({ entry, onClose, showToast }: { entry: PasswordEntry; on
 
 function ForgotPasswordModal({ onClose, onReset }: { onClose: () => void; onReset: () => void }) {
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-content" onClick={(e) => e.stopPropagation()} style={{ maxWidth: '500px' }}>
+    <div className="modal-overlay">
+      <div className="modal-content" style={{ maxWidth: '500px', position: 'relative' }}>
+        <button type="button" className="modal-close-btn" onClick={onClose} style={{ position: 'absolute', top: '16px', right: '16px' }}>
+          <X size={20} />
+        </button>
         <h2>Ana parolanızı mı unuttunuz?</h2>
         
         <div style={{ marginBottom: '1.5rem' }}>

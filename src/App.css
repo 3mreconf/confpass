@@ -1927,6 +1927,7 @@ body::before {
 }
 
 .modal-content {
+  position: relative;
   background: linear-gradient(145deg, var(--bg-secondary) 0%, var(--bg-primary) 100%);
   backdrop-filter: blur(40px) saturate(200%);
   -webkit-backdrop-filter: blur(40px) saturate(200%);
@@ -1961,8 +1962,8 @@ body::before {
   border-radius: var(--radius-full);
 }
 
-/* Modal top accent */
-.modal-content::before {
+/* Modal top accent - disabled */
+/* .modal-content::before {
   content: '';
   position: absolute;
   top: 0;
@@ -1973,7 +1974,7 @@ body::before {
   background: var(--accent-gradient);
   border-radius: 0 0 var(--radius-sm) var(--radius-sm);
   box-shadow: 0 0 20px var(--accent-glow);
-}
+} */
 
 @keyframes modalReveal {
   0% {
@@ -2073,10 +2074,14 @@ body::before {
 
 .form-group input:focus,
 .form-group textarea:focus,
-.form-group select:focus {
+.form-group select:focus,
+.form-group input:focus-visible,
+.form-group textarea:focus-visible,
+.form-group select:focus-visible {
   border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-muted), var(--shadow-glow);
+  box-shadow: 0 0 0 3px var(--accent-muted);
   background: var(--bg-secondary);
+  outline: none;
 }
 
 .form-group textarea {
@@ -4522,6 +4527,323 @@ a:focus-visible {
   font-size: 0.9rem;
   color: white;
   margin-top: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════════
+   Bank Card Modal - 3D Card Design
+   ═══════════════════════════════════════════════════════════════════════════════ */
+
+.bank-card-modal {
+  width: 100%;
+}
+
+.bank-card-modal h2 {
+  text-align: center;
+  margin-bottom: var(--space-lg);
+}
+
+.card-preview-container {
+  perspective: 1000px;
+  margin-bottom: var(--space-xl);
+  display: flex;
+  justify-content: center;
+}
+
+.card-3d {
+  width: 320px;
+  height: 200px;
+  position: relative;
+  transform-style: preserve-3d;
+  transition: transform 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.card-3d.flipped {
+  transform: rotateY(180deg);
+}
+
+.card-face {
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  backface-visibility: hidden;
+  border-radius: 16px;
+  padding: 24px;
+  box-shadow:
+    0 20px 60px rgba(0, 0, 0, 0.4),
+    0 0 0 1px rgba(255, 255, 255, 0.1) inset;
+  overflow: hidden;
+}
+
+.card-back {
+  transform: rotateY(180deg);
+}
+
+.card-shine {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: linear-gradient(
+    135deg,
+    rgba(255, 255, 255, 0.25) 0%,
+    rgba(255, 255, 255, 0) 50%,
+    rgba(255, 255, 255, 0.1) 100%
+  );
+  pointer-events: none;
+}
+
+.card-chip {
+  width: 50px;
+  height: 38px;
+  background: linear-gradient(135deg, #f0d78c 0%, #c9a227 50%, #f0d78c 100%);
+  border-radius: 8px;
+  position: relative;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  grid-template-rows: repeat(2, 1fr);
+  gap: 3px;
+  padding: 6px;
+}
+
+.chip-line {
+  background: linear-gradient(90deg, #c9a227 0%, #f0d78c 50%, #c9a227 100%);
+  border-radius: 2px;
+}
+
+.card-contactless {
+  position: absolute;
+  top: 20px;
+  right: 60px;
+  width: 32px;
+  height: 32px;
+  color: rgba(255, 255, 255, 0.6);
+  transform: rotate(90deg);
+}
+
+.card-type-logo {
+  position: absolute;
+  top: 20px;
+  right: 20px;
+}
+
+.visa-logo {
+  font-family: 'Arial Black', sans-serif;
+  font-size: 24px;
+  font-weight: 900;
+  font-style: italic;
+  color: white;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.mc-logo {
+  display: flex;
+  gap: -8px;
+}
+
+.mc-logo span {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: block;
+}
+
+.mc-logo span:first-child {
+  background: #eb001b;
+}
+
+.mc-logo span:last-child {
+  background: #f79e1b;
+  margin-left: -12px;
+  opacity: 0.9;
+}
+
+.amex-logo, .discover-logo, .other-logo {
+  font-family: 'Arial', sans-serif;
+  font-size: 14px;
+  font-weight: 700;
+  color: white;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+}
+
+.card-number {
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  font-weight: 600;
+  color: white;
+  letter-spacing: 2px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  margin-top: 35px;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+}
+
+.card-number.focused {
+  color: #ffd700;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+.card-bottom {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  right: 24px;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+}
+
+.card-holder, .card-expiry {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.card-holder .label, .card-expiry .label {
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.card-holder .value, .card-expiry .value {
+  font-size: 14px;
+  color: white;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  transition: all 0.3s ease;
+}
+
+.card-holder .value.focused, .card-expiry .value.focused {
+  color: #ffd700;
+  text-shadow: 0 0 10px rgba(255, 215, 0, 0.5);
+}
+
+/* Card Back */
+.card-stripe {
+  position: absolute;
+  top: 30px;
+  left: 0;
+  right: 0;
+  height: 50px;
+  background: #1a1a1a;
+}
+
+.card-cvv-section {
+  position: absolute;
+  top: 100px;
+  right: 24px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.cvv-label {
+  font-size: 10px;
+  color: rgba(255, 255, 255, 0.6);
+  text-transform: uppercase;
+}
+
+.cvv-band {
+  background: white;
+  color: #1a1a1a;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-family: 'Courier New', monospace;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 4px;
+  min-width: 60px;
+  text-align: center;
+  transition: all 0.3s ease;
+}
+
+.cvv-band.focused {
+  background: #ffd700;
+  box-shadow: 0 0 15px rgba(255, 215, 0, 0.6);
+}
+
+.card-back-text {
+  position: absolute;
+  bottom: 24px;
+  left: 24px;
+  right: 24px;
+  font-size: 9px;
+  color: rgba(255, 255, 255, 0.5);
+  text-align: center;
+}
+
+/* Card Form */
+.card-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-md);
+}
+
+.card-form .form-row {
+  display: flex;
+  gap: var(--space-md);
+}
+
+.card-form .form-row.two-col .form-field {
+  flex: 1;
+}
+
+.card-form .form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.card-form .form-field.full {
+  width: 100%;
+}
+
+.card-form .form-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.card-input {
+  width: 100%;
+  padding: 14px 16px;
+  background: var(--bg-tertiary);
+  border: 2px solid var(--border);
+  border-radius: var(--radius-lg);
+  color: var(--text-primary);
+  font-size: 15px;
+  transition: all 0.2s ease;
+  outline: none;
+}
+
+.card-input:focus,
+.card-input:focus-visible {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-muted);
+  outline: none;
+}
+
+.card-input.mono {
+  font-family: 'Courier New', monospace;
+  letter-spacing: 2px;
+}
+
+.card-input.uppercase {
+  text-transform: uppercase;
+}
+
+.card-input.center {
+  text-align: center;
+}
+
+.card-input::placeholder {
+  color: var(--text-tertiary);
+  letter-spacing: normal;
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════════
