@@ -31,6 +31,7 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
   const [resetPassword, setResetPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
 
   const timeoutOptions = [
     { value: 60, label: '1 dakika' },
@@ -220,6 +221,180 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
     }
   }, [showToast]);
 
+  // CSV Parser - handles quoted fields and commas within quotes
+  const parseCSV = (text: string): string[][] => {
+    const rows: string[][] = [];
+    const lines = text.split(/\r?\n/);
+
+    for (const line of lines) {
+      if (!line.trim()) continue;
+
+      const row: string[] = [];
+      let current = '';
+      let inQuotes = false;
+
+      for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+
+        if (char === '"') {
+          if (inQuotes && line[i + 1] === '"') {
+            current += '"';
+            i++;
+          } else {
+            inQuotes = !inQuotes;
+          }
+        } else if (char === ',' && !inQuotes) {
+          row.push(current.trim());
+          current = '';
+        } else {
+          current += char;
+        }
+      }
+      row.push(current.trim());
+      rows.push(row);
+    }
+    return rows;
+  };
+
+  // LastPass CSV Parser
+  const parseLastPassCSV = (text: string) => {
+    const rows = parseCSV(text);
+    if (rows.length < 2) return [];
+
+    const headers = rows[0].map(h => h.toLowerCase());
+    const urlIdx = headers.indexOf('url');
+    const usernameIdx = headers.indexOf('username');
+    const passwordIdx = headers.indexOf('password');
+    const totpIdx = headers.indexOf('totp');
+    const extraIdx = headers.indexOf('extra');
+    const nameIdx = headers.indexOf('name');
+
+    const entries: any[] = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (row.length < 3) continue;
+
+      const name = nameIdx >= 0 ? row[nameIdx] : '';
+      const url = urlIdx >= 0 ? row[urlIdx] : '';
+      const username = usernameIdx >= 0 ? row[usernameIdx] : '';
+      const password = passwordIdx >= 0 ? row[passwordIdx] : '';
+      const notes = extraIdx >= 0 ? row[extraIdx] : '';
+      const totp = totpIdx >= 0 ? row[totpIdx] : '';
+
+      if (!password && !username) continue;
+
+      entries.push({
+        id: `entry_${crypto.randomUUID()}`,
+        created_at: Math.floor(Date.now() / 1000),
+        updated_at: Math.floor(Date.now() / 1000),
+        category: 'accounts',
+        title: name || (url ? new URL(url).hostname : 'Unnamed'),
+        url: url || '',
+        username: username || '',
+        password: password || '',
+        notes: notes || '',
+        totp_secret: totp || undefined,
+      });
+    }
+    return entries;
+  };
+
+  // Bitwarden CSV Parser
+  const parseBitwardenCSV = (text: string) => {
+    const rows = parseCSV(text);
+    if (rows.length < 2) return [];
+
+    const headers = rows[0].map(h => h.toLowerCase().replace(/[^a-z_]/g, ''));
+    const nameIdx = headers.indexOf('name');
+    const uriIdx = headers.findIndex(h => h.includes('uri') || h.includes('url'));
+    const usernameIdx = headers.findIndex(h => h.includes('username'));
+    const passwordIdx = headers.findIndex(h => h.includes('password'));
+    const totpIdx = headers.findIndex(h => h.includes('totp'));
+    const notesIdx = headers.indexOf('notes');
+
+    const entries: any[] = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (row.length < 3) continue;
+
+      const name = nameIdx >= 0 ? row[nameIdx] : '';
+      const url = uriIdx >= 0 ? row[uriIdx] : '';
+      const username = usernameIdx >= 0 ? row[usernameIdx] : '';
+      const password = passwordIdx >= 0 ? row[passwordIdx] : '';
+      const notes = notesIdx >= 0 ? row[notesIdx] : '';
+      const totp = totpIdx >= 0 ? row[totpIdx] : '';
+
+      if (!password && !username) continue;
+
+      let parsedUrl = url;
+      try {
+        if (url && !url.startsWith('http')) {
+          parsedUrl = 'https://' + url;
+        }
+      } catch {}
+
+      entries.push({
+        id: `entry_${crypto.randomUUID()}`,
+        created_at: Math.floor(Date.now() / 1000),
+        updated_at: Math.floor(Date.now() / 1000),
+        category: 'accounts',
+        title: name || (parsedUrl ? new URL(parsedUrl).hostname : 'Unnamed'),
+        url: parsedUrl || '',
+        username: username || '',
+        password: password || '',
+        notes: notes || '',
+        totp_secret: totp || undefined,
+      });
+    }
+    return entries;
+  };
+
+  // 1Password CSV Parser
+  const parse1PasswordCSV = (text: string) => {
+    const rows = parseCSV(text);
+    if (rows.length < 2) return [];
+
+    const headers = rows[0].map(h => h.toLowerCase());
+    const titleIdx = headers.indexOf('title');
+    const urlIdx = headers.findIndex(h => h.includes('url') || h.includes('website'));
+    const usernameIdx = headers.findIndex(h => h.includes('username'));
+    const passwordIdx = headers.findIndex(h => h.includes('password'));
+    const otpIdx = headers.findIndex(h => h.includes('otp') || h.includes('totp'));
+    const notesIdx = headers.findIndex(h => h.includes('notes') || h.includes('notesplain'));
+
+    const entries: any[] = [];
+
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      if (row.length < 3) continue;
+
+      const title = titleIdx >= 0 ? row[titleIdx] : '';
+      const url = urlIdx >= 0 ? row[urlIdx] : '';
+      const username = usernameIdx >= 0 ? row[usernameIdx] : '';
+      const password = passwordIdx >= 0 ? row[passwordIdx] : '';
+      const notes = notesIdx >= 0 ? row[notesIdx] : '';
+      const totp = otpIdx >= 0 ? row[otpIdx] : '';
+
+      if (!password && !username) continue;
+
+      entries.push({
+        id: `entry_${crypto.randomUUID()}`,
+        created_at: Math.floor(Date.now() / 1000),
+        updated_at: Math.floor(Date.now() / 1000),
+        category: 'accounts',
+        title: title || (url ? new URL(url).hostname : 'Unnamed'),
+        url: url || '',
+        username: username || '',
+        password: password || '',
+        notes: notes || '',
+        totp_secret: totp || undefined,
+      });
+    }
+    return entries;
+  };
+
   const parseTxtVaultData = (text: string) => {
     const entries: any[] = [];
     const blocks = text.split('---');
@@ -266,31 +441,45 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
     return entries;
   };
 
-  const handleImport = useCallback(() => {
+  const handleImportFile = useCallback((source: 'confpass' | 'lastpass' | 'bitwarden' | '1password') => {
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.json,.txt';
+    input.accept = source === 'confpass' ? '.json,.txt' : '.csv';
     input.onchange = async (e) => {
       const file = (e.target as HTMLInputElement).files?.[0];
       if (!file) return;
-      
+
       try {
         const text = await file.text();
-        let jsonData: string;
+        let entries: any[] = [];
 
-        if (file.name.toLowerCase().endsWith('.txt')) {
-          const entries = parseTxtVaultData(text);
-          if (entries.length === 0) {
-            showToast('Geçerli bir veri bulunamadı veya format yanlış', 'error');
+        if (source === 'confpass') {
+          if (file.name.toLowerCase().endsWith('.txt')) {
+            entries = parseTxtVaultData(text);
+          } else {
+            // JSON format
+            const count = await invoke<number>('import_vault', { jsonData: text });
+            showToast(`${count} kayıt başarıyla içe aktarıldı`, 'success');
+            setShowImportModal(false);
             return;
           }
-          jsonData = JSON.stringify({ entries });
-        } else {
-          jsonData = text;
+        } else if (source === 'lastpass') {
+          entries = parseLastPassCSV(text);
+        } else if (source === 'bitwarden') {
+          entries = parseBitwardenCSV(text);
+        } else if (source === '1password') {
+          entries = parse1PasswordCSV(text);
         }
 
+        if (entries.length === 0) {
+          showToast('Geçerli bir veri bulunamadı veya format yanlış', 'error');
+          return;
+        }
+
+        const jsonData = JSON.stringify({ entries });
         const count = await invoke<number>('import_vault', { jsonData });
         showToast(`${count} kayıt başarıyla içe aktarıldı`, 'success');
+        setShowImportModal(false);
       } catch (error) {
         const errorStr = String(error || '');
         showToast(errorStr || 'İçe aktarma hatası', 'error');
@@ -298,6 +487,10 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
     };
     input.click();
   }, [showToast]);
+
+  const handleImport = useCallback(() => {
+    setShowImportModal(true);
+  }, []);
 
   const handleResetVault = useCallback(async () => {
     if (!resetPassword.trim()) {
@@ -498,7 +691,7 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
           <div className="settings-item">
             <div className="settings-item-info">
               <h3>Kasayı İçe Aktar</h3>
-              <p>JSON veya TXT dosyasından şifrelerinizi içe aktarın</p>
+              <p>ConfPass, LastPass, Bitwarden veya 1Password'dan aktarın</p>
             </div>
             <button className="settings-action-button" onClick={handleImport}>
               <Upload size={18} />
@@ -814,6 +1007,220 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
                 </div>
               </>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Import Modal */}
+      {showImportModal && (
+        <div className="modal-overlay" style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div className="modal-content" style={{
+            background: 'var(--bg-secondary)',
+            borderRadius: '16px',
+            padding: '2rem',
+            maxWidth: '500px',
+            width: '90%',
+            border: '1px solid var(--border)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '12px',
+                background: 'var(--accent-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Upload size={24} style={{ color: 'var(--accent)' }} />
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Şifreleri İçe Aktar</h2>
+                <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  Kaynak uygulamayı seçin
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
+              <button
+                onClick={() => handleImportFile('confpass')}
+                style={{
+                  padding: '1rem',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  textAlign: 'left',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+              >
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, #fbbf24 0%, #f59e0b 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold',
+                  color: '#000'
+                }}>CP</div>
+                <div>
+                  <div style={{ fontWeight: 600 }}>ConfPass</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>JSON veya TXT dosyası</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleImportFile('lastpass')}
+                style={{
+                  padding: '1rem',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  textAlign: 'left',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+              >
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '8px',
+                  background: '#d32d27',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold',
+                  color: '#fff'
+                }}>LP</div>
+                <div>
+                  <div style={{ fontWeight: 600 }}>LastPass</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>CSV dosyası dışa aktarın</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleImportFile('bitwarden')}
+                style={{
+                  padding: '1rem',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  textAlign: 'left',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+              >
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '8px',
+                  background: '#175ddc',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold',
+                  color: '#fff'
+                }}>BW</div>
+                <div>
+                  <div style={{ fontWeight: 600 }}>Bitwarden</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>CSV dosyası dışa aktarın</div>
+                </div>
+              </button>
+
+              <button
+                onClick={() => handleImportFile('1password')}
+                style={{
+                  padding: '1rem',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  textAlign: 'left',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+              >
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '8px',
+                  background: '#1a8cff',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold',
+                  color: '#fff'
+                }}>1P</div>
+                <div>
+                  <div style={{ fontWeight: 600 }}>1Password</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>CSV dosyası dışa aktarın</div>
+                </div>
+              </button>
+            </div>
+
+            <div style={{
+              background: 'var(--bg-tertiary)',
+              borderRadius: '8px',
+              padding: '0.75rem 1rem',
+              marginBottom: '1rem',
+              fontSize: '0.85rem',
+              color: 'var(--text-secondary)'
+            }}>
+              <strong style={{ color: 'var(--text-primary)' }}>İpucu:</strong> Diğer uygulamalardan şifrelerinizi CSV formatında dışa aktarın, ardından burada içe aktarın.
+            </div>
+
+            <button
+              onClick={() => setShowImportModal(false)}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                borderRadius: '8px',
+                border: '1px solid var(--border)',
+                background: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontWeight: 500
+              }}
+            >
+              İptal
+            </button>
           </div>
         </div>
       )}

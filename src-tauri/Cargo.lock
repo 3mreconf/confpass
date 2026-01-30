@@ -993,7 +993,7 @@ dependencies = [
 
 [[package]]
 name = "confpass"
-version = "1.6.0"
+version = "1.6.2"
 dependencies = [
  "active-win-pos-rs",
  "aes-gcm",

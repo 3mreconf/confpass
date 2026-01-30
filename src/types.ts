@@ -8,6 +8,24 @@ export interface PasswordEntry {
   created_at: number;
   updated_at: number;
   category: string;
+  folder_id?: string;
+  tags?: string[];
+}
+
+export interface Folder {
+  id: string;
+  name: string;
+  color: string;
+  icon: string;
+  parent_id?: string;
+  created_at: number;
+  order: number;
+}
+
+export interface Tag {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export interface ToastMessage {

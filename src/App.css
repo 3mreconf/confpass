@@ -876,6 +876,291 @@ body::before {
   border: 1px solid rgba(239, 68, 68, 0.3) !important;
 }
 
+/* Folders Section */
+.sidebar-folders {
+  border-top: 1px solid var(--border);
+  padding: var(--space-sm) 0;
+  flex-shrink: 0;
+  max-height: 200px;
+  display: flex;
+  flex-direction: column;
+}
+
+.sidebar-folders-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-xs) var(--space-md);
+  margin-bottom: var(--space-xs);
+}
+
+.sidebar-folders-title {
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--text-tertiary);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.sidebar-folder-add {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: var(--space-xs);
+  border-radius: var(--radius-sm);
+  transition: all var(--duration-fast) var(--ease-smooth);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.sidebar-folder-add:hover {
+  background: var(--bg-tertiary);
+  color: var(--accent);
+}
+
+.sidebar-folders-list {
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: var(--bg-elevated) transparent;
+  padding: 0 var(--space-sm);
+}
+
+.sidebar-folders-list::-webkit-scrollbar {
+  width: 4px;
+}
+
+.sidebar-folders-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-folders-list::-webkit-scrollbar-thumb {
+  background: var(--bg-elevated);
+  border-radius: var(--radius-full);
+}
+
+.sidebar-folders-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-xs);
+  padding: var(--space-md);
+  color: var(--text-tertiary);
+  font-size: 0.75rem;
+}
+
+.folder-item-wrapper {
+  position: relative;
+}
+
+.folder-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  padding: var(--space-xs) var(--space-sm);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-smooth);
+  background: transparent;
+  border: 1px solid transparent;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  width: 100%;
+  text-align: left;
+  position: relative;
+}
+
+.folder-item:hover {
+  background: var(--bg-tertiary);
+  border-color: var(--border);
+}
+
+.folder-item.active {
+  background: var(--accent-muted);
+  border-color: var(--accent-border);
+  color: var(--accent);
+}
+
+.folder-item-child {
+  padding-left: calc(var(--space-sm) + 20px);
+}
+
+.folder-expand {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform var(--duration-fast) var(--ease-smooth);
+}
+
+.folder-expand svg.rotated {
+  transform: rotate(90deg);
+}
+
+.folder-color-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-full);
+  flex-shrink: 0;
+}
+
+.folder-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.folder-count {
+  font-size: 0.65rem;
+  background: var(--bg-elevated);
+  color: var(--text-tertiary);
+  padding: 1px 5px;
+  border-radius: var(--radius-full);
+  min-width: 16px;
+  text-align: center;
+}
+
+.folder-item.active .folder-count {
+  background: var(--accent);
+  color: var(--bg-primary);
+}
+
+.folder-menu-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  opacity: 0;
+  transition: all var(--duration-fast) var(--ease-smooth);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.folder-item:hover .folder-menu-btn {
+  opacity: 1;
+}
+
+.folder-menu-btn:hover {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.folder-menu {
+  position: absolute;
+  top: 100%;
+  right: var(--space-sm);
+  background: var(--bg-secondary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-xs);
+  z-index: 100;
+  min-width: 120px;
+  box-shadow: var(--shadow-lg);
+}
+
+.folder-menu button {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  width: 100%;
+  padding: var(--space-xs) var(--space-sm);
+  background: transparent;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 0.8rem;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+  transition: all var(--duration-fast) var(--ease-smooth);
+}
+
+.folder-menu button:hover {
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+}
+
+.folder-menu button.danger {
+  color: var(--danger);
+}
+
+.folder-menu button.danger:hover {
+  background: var(--danger-muted);
+}
+
+/* Folder Modal */
+.folder-modal {
+  max-width: 400px;
+  width: 90%;
+}
+
+.folder-form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-lg);
+}
+
+.folder-color-picker {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-sm);
+}
+
+.folder-color-option {
+  width: 28px;
+  height: 28px;
+  border-radius: var(--radius-full);
+  border: 2px solid transparent;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-smooth);
+}
+
+.folder-color-option:hover {
+  transform: scale(1.1);
+}
+
+.folder-color-option.active {
+  border-color: var(--text-primary);
+  box-shadow: 0 0 0 2px var(--bg-primary), 0 0 0 4px currentColor;
+}
+
+.folder-parent-select {
+  width: 100%;
+  padding: var(--space-sm) var(--space-md);
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  color: var(--text-primary);
+  font-size: 0.9rem;
+}
+
+.folder-parent-select:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.folder-preview {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: var(--space-md);
+}
+
+.folder-preview-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
 .sidebar-footer {
   border-top: 1px solid var(--border);
   padding: var(--space-md);
@@ -1016,6 +1301,10 @@ body::before {
   color: var(--text-primary);
   font-family: var(--font-body);
   font-size: 0.875rem;
+  outline: none;
+}
+
+.search-input-main:focus-visible {
   outline: none;
 }
 

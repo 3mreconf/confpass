@@ -59,6 +59,10 @@ pub struct PasswordEntry {
     pub updated_at: i64,
     pub category: String,
     #[serde(default)]
+    pub folder_id: Option<String>,
+    #[serde(default)]
+    pub tags: Option<Vec<String>>,
+    #[serde(default)]
     pub extra_fields: Option<HashMap<String, String>>,
 }
 
@@ -72,13 +76,39 @@ pub struct VaultState {
     last_attempt_time: Option<SystemTime>,
     rate_limit_window: Duration,
     encryption_salt: Option<String>,
+    folders: Vec<Folder>,
+    tags: Vec<Tag>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Folder {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+    pub icon: String,
+    #[serde(default)]
+    pub parent_id: Option<String>,
+    pub created_at: i64,
+    #[serde(default)]
+    pub order: i32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Tag {
+    pub id: String,
+    pub name: String,
+    pub color: String,
+}
+
+#[derive(Deserialize, Serialize)]
 struct VaultData {
     entries: Vec<PasswordEntry>,
     master_password_hash: String,
     encryption_salt: String,
+    #[serde(default)]
+    folders: Vec<Folder>,
+    #[serde(default)]
+    tags: Vec<Tag>,
 }
 
 #[derive(Debug)]
@@ -112,6 +142,16 @@ fn get_state_mut() -> Result<MutexGuard<'static, VaultState>, VaultError> {
     VAULT_STATE
         .lock()
         .map_err(|_| VaultError::InternalError("Mutex lock failed".to_string()))
+}
+
+fn get_master_password() -> Result<String, String> {
+    let master_pwd = MASTER_PASSWORD
+        .lock()
+        .map_err(|_| "Master password lock hatası".to_string())?;
+    let pwd = master_pwd
+        .as_ref()
+        .ok_or_else(|| "Master password bulunamadı. Lütfen kasa kilidini açın.".to_string())?;
+    Ok(pwd.as_str().to_string())
 }
 
 fn validate_input(
@@ -168,6 +208,8 @@ impl Default for VaultState {
             last_attempt_time: None,
             rate_limit_window: Duration::from_secs(300),
             encryption_salt: None,
+            folders: Vec::new(),
+            tags: Vec::new(),
         }
     }
 }
@@ -333,6 +375,8 @@ fn save_vault_to_disk(state: &VaultState, master_password: &str) -> Result<(), S
             .clone()
             .ok_or_else(|| "Master password hash bulunamadı".to_string())?,
         encryption_salt: general_purpose::STANDARD.encode(&salt),
+        folders: state.folders.clone(),
+        tags: state.tags.clone(),
     };
 
     let json_data =
@@ -422,6 +466,8 @@ fn load_vault_from_disk(master_password: &str) -> Result<VaultState, String> {
         last_attempt_time: None,
         rate_limit_window: Duration::from_secs(300),
         encryption_salt: Some(general_purpose::STANDARD.encode(&salt)),
+        folders: vault_data.folders,
+        tags: vault_data.tags,
     })
 }
 
@@ -470,6 +516,8 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
             last_attempt_time: state.last_attempt_time,
             rate_limit_window: state.rate_limit_window,
             encryption_salt: state.encryption_salt.clone(),
+            folders: state.folders.clone(),
+            tags: state.tags.clone(),
         };
         drop(state);
 
@@ -628,6 +676,7 @@ fn add_password_entry(
     notes: Option<String>,
     category: String,
     extra_fields: Option<HashMap<String, String>>,
+    folder_id: Option<String>,
 ) -> Result<PasswordEntry, String> {
     let mut state = get_state_mut().map_err(|e| e.to_string())?;
 
@@ -692,6 +741,8 @@ fn add_password_entry(
         updated_at: now,
         category,
         extra_fields,
+        folder_id,
+        tags: None,
     };
 
     let entry_clone = entry.clone();
@@ -726,6 +777,198 @@ fn get_password_entries() -> Result<Vec<PasswordEntry>, String> {
     entries.sort_unstable_by(|a, b| b.updated_at.cmp(&a.updated_at));
     Ok(entries)
 }
+
+// ========== Folder Commands ==========
+
+#[tauri::command]
+fn get_folders() -> Result<Vec<Folder>, String> {
+    let state = get_state().map_err(|e| e.to_string())?;
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+    let mut folders = state.folders.clone();
+    folders.sort_by(|a, b| a.order.cmp(&b.order));
+    Ok(folders)
+}
+
+#[tauri::command]
+fn create_folder(name: String, color: String, icon: String, parent_id: Option<String>) -> Result<Folder, String> {
+    let mut state = get_state_mut().map_err(|e| e.to_string())?;
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    let folder = Folder {
+        id: format!("folder_{}", uuid::Uuid::new_v4()),
+        name,
+        color,
+        icon,
+        parent_id,
+        created_at: chrono::Utc::now().timestamp(),
+        order: state.folders.len() as i32,
+    };
+
+    state.folders.push(folder.clone());
+
+    let master_pwd = get_master_password()?;
+    let state_snapshot = state.clone();
+    drop(state);
+    save_vault_to_disk(&state_snapshot, &master_pwd)?;
+
+    Ok(folder)
+}
+
+#[tauri::command]
+fn update_folder(id: String, name: Option<String>, color: Option<String>, icon: Option<String>, order: Option<i32>) -> Result<Folder, String> {
+    let mut state = get_state_mut().map_err(|e| e.to_string())?;
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    let folder = state.folders.iter_mut().find(|f| f.id == id)
+        .ok_or_else(|| "Klasör bulunamadı".to_string())?;
+
+    if let Some(n) = name { folder.name = n; }
+    if let Some(c) = color { folder.color = c; }
+    if let Some(i) = icon { folder.icon = i; }
+    if let Some(o) = order { folder.order = o; }
+
+    let updated_folder = folder.clone();
+
+    let master_pwd = get_master_password()?;
+    let state_snapshot = state.clone();
+    drop(state);
+    save_vault_to_disk(&state_snapshot, &master_pwd)?;
+
+    Ok(updated_folder)
+}
+
+#[tauri::command]
+fn delete_folder(id: String) -> Result<(), String> {
+    let mut state = get_state_mut().map_err(|e| e.to_string())?;
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    // Remove folder
+    state.folders.retain(|f| f.id != id);
+
+    // Clear folder_id from entries that were in this folder
+    for entry in state.entries.values_mut() {
+        if entry.folder_id.as_ref() == Some(&id) {
+            entry.folder_id = None;
+        }
+    }
+
+    let master_pwd = get_master_password()?;
+    let state_snapshot = state.clone();
+    drop(state);
+    save_vault_to_disk(&state_snapshot, &master_pwd)?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn move_entry_to_folder(entry_id: String, folder_id: Option<String>) -> Result<(), String> {
+    let mut state = get_state_mut().map_err(|e| e.to_string())?;
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    let entry = state.entries.get_mut(&entry_id)
+        .ok_or_else(|| "Kayıt bulunamadı".to_string())?;
+
+    entry.folder_id = folder_id;
+    entry.updated_at = chrono::Utc::now().timestamp();
+
+    let master_pwd = get_master_password()?;
+    let state_snapshot = state.clone();
+    drop(state);
+    save_vault_to_disk(&state_snapshot, &master_pwd)?;
+
+    Ok(())
+}
+
+// ========== Tag Commands ==========
+
+#[tauri::command]
+fn get_tags() -> Result<Vec<Tag>, String> {
+    let state = get_state().map_err(|e| e.to_string())?;
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+    Ok(state.tags.clone())
+}
+
+#[tauri::command]
+fn create_tag(name: String, color: String) -> Result<Tag, String> {
+    let mut state = get_state_mut().map_err(|e| e.to_string())?;
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    let tag = Tag {
+        id: format!("tag_{}", uuid::Uuid::new_v4()),
+        name,
+        color,
+    };
+
+    state.tags.push(tag.clone());
+
+    let master_pwd = get_master_password()?;
+    let state_snapshot = state.clone();
+    drop(state);
+    save_vault_to_disk(&state_snapshot, &master_pwd)?;
+
+    Ok(tag)
+}
+
+#[tauri::command]
+fn delete_tag(id: String) -> Result<(), String> {
+    let mut state = get_state_mut().map_err(|e| e.to_string())?;
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    state.tags.retain(|t| t.id != id);
+
+    // Remove tag from entries
+    for entry in state.entries.values_mut() {
+        if let Some(ref mut tags) = entry.tags {
+            tags.retain(|t| t != &id);
+        }
+    }
+
+    let master_pwd = get_master_password()?;
+    let state_snapshot = state.clone();
+    drop(state);
+    save_vault_to_disk(&state_snapshot, &master_pwd)?;
+
+    Ok(())
+}
+
+#[tauri::command]
+fn update_entry_tags(entry_id: String, tags: Vec<String>) -> Result<(), String> {
+    let mut state = get_state_mut().map_err(|e| e.to_string())?;
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    let entry = state.entries.get_mut(&entry_id)
+        .ok_or_else(|| "Kayıt bulunamadı".to_string())?;
+
+    entry.tags = Some(tags);
+    entry.updated_at = chrono::Utc::now().timestamp();
+
+    let master_pwd = get_master_password()?;
+    let state_snapshot = state.clone();
+    drop(state);
+    save_vault_to_disk(&state_snapshot, &master_pwd)?;
+
+    Ok(())
+}
+
+// ========== Entry Commands ==========
 
 #[tauri::command]
 fn get_password_entry(id: String) -> Result<PasswordEntry, String> {
@@ -1703,6 +1946,8 @@ async fn save_password_handler(
             updated_at: now,
             category: "accounts".to_string(),
             extra_fields: None,
+            folder_id: None,
+            tags: None,
         };
 
         state.entries.insert(id.clone(), entry);
@@ -2062,6 +2307,8 @@ async fn save_passkey_handler(
                 updated_at: now,
                 category: "passkeys".to_string(),
                 extra_fields: None,
+                folder_id: None,
+                tags: None,
             };
 
             state.entries.insert(entry_id, entry);
@@ -2897,6 +3144,8 @@ async fn save_entry_handler(
             updated_at: now,
             category,
             extra_fields: None,
+            folder_id: None,
+            tags: None,
         };
 
         state.entries.insert(id.clone(), entry);
@@ -4094,6 +4343,17 @@ pub fn run() {
             set_stream_protection,
             get_stream_protection_status,
             check_streaming_apps,
+            // Folder commands
+            get_folders,
+            create_folder,
+            update_folder,
+            delete_folder,
+            move_entry_to_folder,
+            // Tag commands
+            get_tags,
+            create_tag,
+            delete_tag,
+            update_entry_tags,
         ])
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {

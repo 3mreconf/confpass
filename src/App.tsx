@@ -2,10 +2,10 @@ import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
-import { Lock, Unlock, Plus, Search, Key, Shield, Settings as SettingsIcon, Home, CheckCircle, XCircle, Info, AlertCircle, ChevronDown, Minus, Maximize2, X, Grid3x3, Star, Download, HelpCircle, AlertTriangle, Eye, EyeOff, Copy, Clock, KeyRound, Fingerprint } from 'lucide-react';
+import { Lock, Unlock, Plus, Search, Key, Shield, Settings as SettingsIcon, Home, CheckCircle, XCircle, Info, AlertCircle, ChevronDown, Minus, Maximize2, X, Grid3x3, Star, Download, HelpCircle, AlertTriangle, Eye, EyeOff, Copy, Clock, KeyRound, Fingerprint, Folder as FolderIcon, FolderPlus, MoreHorizontal, Edit3, Trash2, ChevronRight } from 'lucide-react';
 import { CATEGORY_NAMES, CATEGORY_OPTIONS, DEBOUNCE_DELAY, AUTO_LOCK_TIMEOUT, TOAST_DURATION } from './constants';
 import { clearClipboard, validateUrl } from './utils';
-import type { PasswordEntry, ToastMessage, ConfirmDialog, BankCardData, DocumentData, AddressData, PasskeyData } from './types';
+import type { PasswordEntry, ToastMessage, ConfirmDialog, BankCardData, DocumentData, AddressData, PasskeyData, Folder } from './types';
 import EntryCard from './components/EntryCard';
 import Settings from './components/Settings';
 import PasswordGeneratorModal from './components/PasswordGeneratorModal';
@@ -22,6 +22,132 @@ import { useBiometric } from './hooks/useBiometric';
 import { useUpdateCheck } from './hooks/useUpdateCheck';
 import './App.css';
 import AppLogo from './assets/logo.svg';
+
+// Folder color presets
+const FOLDER_COLORS = [
+  '#f59e0b', // amber
+  '#ef4444', // red
+  '#10b981', // emerald
+  '#3b82f6', // blue
+  '#8b5cf6', // violet
+  '#ec4899', // pink
+  '#06b6d4', // cyan
+  '#84cc16', // lime
+  '#f97316', // orange
+  '#6366f1', // indigo
+];
+
+interface FolderModalProps {
+  folder: Folder | null;
+  folders: Folder[];
+  onClose: () => void;
+  onCreate: (name: string, color: string, icon: string, parentId?: string) => Promise<void>;
+  onUpdate: (id: string, name: string, color: string, icon: string) => Promise<void>;
+}
+
+const FolderModal = memo(({ folder, folders, onClose, onCreate, onUpdate }: FolderModalProps) => {
+  const [name, setName] = useState(folder?.name || '');
+  const [color, setColor] = useState(folder?.color || FOLDER_COLORS[0]);
+  const [parentId, setParentId] = useState<string>(folder?.parent_id || '');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!name.trim()) return;
+
+    setLoading(true);
+    try {
+      if (folder) {
+        await onUpdate(folder.id, name.trim(), color, 'folder');
+      } else {
+        await onCreate(name.trim(), color, 'folder', parentId || undefined);
+      }
+      onClose();
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="modal-overlay" onClick={onClose}>
+      <div className="modal-content folder-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="modal-header">
+          <h3>{folder ? 'Klasörü Düzenle' : 'Yeni Klasör'}</h3>
+          <button className="modal-close" onClick={onClose}>
+            <X size={20} />
+          </button>
+        </div>
+        <form onSubmit={handleSubmit} className="folder-form">
+          <div className="form-group">
+            <label>Klasör Adı</label>
+            <input
+              type="text"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              placeholder="Klasör adı girin..."
+              autoFocus
+              maxLength={50}
+            />
+          </div>
+
+          <div className="form-group">
+            <label>Renk</label>
+            <div className="folder-color-picker">
+              {FOLDER_COLORS.map((c) => (
+                <button
+                  key={c}
+                  type="button"
+                  className={`folder-color-option ${color === c ? 'active' : ''}`}
+                  style={{ backgroundColor: c }}
+                  onClick={() => setColor(c)}
+                />
+              ))}
+            </div>
+          </div>
+
+          {!folder && folders.length > 0 && (
+            <div className="form-group">
+              <label>Üst Klasör (Opsiyonel)</label>
+              <select
+                value={parentId}
+                onChange={(e) => setParentId(e.target.value)}
+                className="folder-parent-select"
+              >
+                <option value="">Kök klasör</option>
+                {folders.filter(f => !f.parent_id).map((f) => (
+                  <option key={f.id} value={f.id}>{f.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          <div className="folder-preview">
+            <div className="folder-preview-item">
+              <div
+                className="folder-color-dot"
+                style={{ backgroundColor: color }}
+              />
+              <span>{name || 'Klasör Adı'}</span>
+            </div>
+          </div>
+
+          <div className="modal-actions">
+            <button type="button" className="btn btn-secondary" onClick={onClose}>
+              İptal
+            </button>
+            <button
+              type="submit"
+              className="btn btn-primary"
+              disabled={!name.trim() || loading}
+            >
+              {loading ? 'Kaydediliyor...' : folder ? 'Güncelle' : 'Oluştur'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+});
 
 function App() {
   const [vaultLocked, setVaultLocked] = useState(true);
@@ -50,6 +176,14 @@ function App() {
   const [showAddPasskey, setShowAddPasskey] = useState(false);
     const [showForgotPasswordModal, setShowForgotPasswordModal] = useState(false);
   const [detectedPasskey, setDetectedPasskey] = useState<{ rpId: string; userName: string; userDisplayName: string } | null>(null);
+
+  // Folder system state
+  const [folders, setFolders] = useState<Folder[]>([]);
+  const [selectedFolder, setSelectedFolder] = useState<string | null>(null);
+  const [showFolderModal, setShowFolderModal] = useState(false);
+  const [editingFolder, setEditingFolder] = useState<Folder | null>(null);
+  const [folderMenuOpen, setFolderMenuOpen] = useState<string | null>(null);
+  const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type });
@@ -203,6 +337,68 @@ function App() {
     }
   }, [showToast]);
 
+  // Folder functions
+  const loadFolders = useCallback(async () => {
+    try {
+      const loadedFolders = await invoke<Folder[]>('get_folders');
+      setFolders(loadedFolders);
+    } catch (error) {
+      console.error('Error loading folders:', error);
+    }
+  }, []);
+
+  const createFolder = useCallback(async (name: string, color: string, icon: string, parentId?: string) => {
+    try {
+      await invoke('create_folder', { name, color, icon, parentId: parentId || null });
+      await loadFolders();
+      showToast('Klasör oluşturuldu', 'success');
+    } catch (error) {
+      console.error('Error creating folder:', error);
+      showToast('Klasör oluşturulamadı', 'error');
+    }
+  }, [loadFolders, showToast]);
+
+  const updateFolder = useCallback(async (id: string, name: string, color: string, icon: string) => {
+    try {
+      await invoke('update_folder', { id, name, color, icon });
+      await loadFolders();
+      showToast('Klasör güncellendi', 'success');
+    } catch (error) {
+      console.error('Error updating folder:', error);
+      showToast('Klasör güncellenemedi', 'error');
+    }
+  }, [loadFolders, showToast]);
+
+  const deleteFolder = useCallback(async (id: string) => {
+    try {
+      await invoke('delete_folder', { id });
+      await loadFolders();
+      if (selectedFolder === id) {
+        setSelectedFolder(null);
+      }
+      showToast('Klasör silindi', 'success');
+    } catch (error) {
+      console.error('Error deleting folder:', error);
+      showToast('Klasör silinemedi', 'error');
+    }
+  }, [loadFolders, selectedFolder, showToast]);
+
+  const moveEntryToFolder = useCallback(async (entryId: string, folderId: string | null) => {
+    try {
+      await invoke('move_entry_to_folder', { entryId, folderId });
+      await loadEntries();
+      showToast(folderId ? 'Kayıt klasöre taşındı' : 'Kayıt klasörden çıkarıldı', 'success');
+    } catch (error) {
+      console.error('Error moving entry to folder:', error);
+      showToast('Kayıt taşınamadı', 'error');
+    }
+  }, [loadEntries, showToast]);
+
+  // Expose moveEntryToFolder for development/debugging
+  useEffect(() => {
+    (window as unknown as { moveEntryToFolder: typeof moveEntryToFolder }).moveEntryToFolder = moveEntryToFolder;
+  }, [moveEntryToFolder]);
+
   const handleBiometricUnlock = useCallback(async () => {
     try {
       const success = await invoke<boolean>('unlock_vault_biometric');
@@ -211,6 +407,7 @@ function App() {
         setMasterPassword('');
         setUnlockError(false);
         await loadEntries();
+        await loadFolders();
         showToast('Kasa başarıyla açıldı', 'success');
       }
     } catch (error) {
@@ -218,7 +415,7 @@ function App() {
       const errorStr = String(error || '');
       showToast(errorStr || 'Biyometrik kimlik doğrulama hatası', 'error');
     }
-  }, [loadEntries, showToast]);
+  }, [loadEntries, loadFolders, showToast]);
 
   const checkVaultStatus = useCallback(async () => {
     try {
@@ -226,18 +423,21 @@ function App() {
       setVaultLocked(locked);
       if (!locked) {
         await loadEntries();
+        await loadFolders();
       }
     } catch (error) {
       console.error('Error checking vault status:', error);
       showToast('Kasa durumu kontrol edilemedi', 'error');
     }
-  }, [loadEntries, showToast]);
+  }, [loadEntries, loadFolders, showToast]);
 
   const handleLock = useCallback(async () => {
     try {
       await invoke('lock_vault');
       setVaultLocked(true);
       setEntries([]);
+      setFolders([]);
+      setSelectedFolder(null);
       setMasterPassword('');
       showToast('Kasa kilitlendi', 'info');
     } catch (error) {
@@ -261,12 +461,13 @@ function App() {
         setMasterPassword('');
         setUnlockError(false);
         await loadEntries();
+        await loadFolders();
         showToast('Kasa başarıyla açıldı', 'success');
       }
     } catch (error) {
       let errorMessage = 'Kasa açılamadı';
       const errorStr = String(error || '');
-      
+
       if (errorStr.includes('Yanlış ana şifre')) {
         errorMessage = 'Yanlış ana şifre';
         setUnlockError(true);
@@ -286,11 +487,11 @@ function App() {
         errorMessage = errorStr;
         setUnlockError(true);
       }
-      
+
       showToast(errorMessage, 'error');
       setUnlockError(true);
     }
-  }, [masterPassword, loadEntries, showToast]);
+  }, [masterPassword, loadEntries, loadFolders, showToast]);
 
   useEffect(() => {
     checkVaultStatus();
@@ -402,26 +603,29 @@ function App() {
 
     const query = debouncedSearchQuery.toLowerCase().trim();
     let filtered = entries.filter(entry => {
-      const matchesSearch = !query || 
+      const matchesSearch = !query ||
         entry.title.toLowerCase().includes(query) ||
         entry.username.toLowerCase().includes(query) ||
         entry.url?.toLowerCase().includes(query) ||
         entry.notes?.toLowerCase().includes(query);
       const matchesCategory = selectedCategory === 'all' || entry.category === selectedCategory;
       const matchesView = viewMode === 'all' || viewMode === 'entries' || favorites.has(entry.id);
-      
+
+      // Folder filtering logic
+      const matchesFolder = !selectedFolder || entry.folder_id === selectedFolder;
+
       // TOTP filtering logic
       const hasTotp = hasTotpData(entry);
       const isTotpCategory = selectedCategory === 'authenticator';
-      
+
       // If in authenticator category, only show entries with TOTP data
       // If NOT in authenticator category, exclude entries with TOTP data
       const matchesTotpFilter = isTotpCategory ? hasTotp : !hasTotp;
-      
-      return matchesSearch && matchesCategory && matchesView && matchesTotpFilter;
+
+      return matchesSearch && matchesCategory && matchesView && matchesTotpFilter && matchesFolder;
     });
     return filtered;
-  }, [entries, debouncedSearchQuery, selectedCategory, viewMode, favorites]);
+  }, [entries, debouncedSearchQuery, selectedCategory, viewMode, favorites, selectedFolder]);
 
 
   const categoryCounts = useMemo(() => {
@@ -464,6 +668,26 @@ function App() {
 
     return counts;
   }, [entries]);
+
+  // Calculate folder entry counts
+  const folderCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const entry of entries) {
+      if (entry.folder_id) {
+        counts[entry.folder_id] = (counts[entry.folder_id] || 0) + 1;
+      }
+    }
+    return counts;
+  }, [entries]);
+
+  // Organize folders hierarchically
+  const rootFolders = useMemo(() => {
+    return folders.filter(f => !f.parent_id).sort((a, b) => a.order - b.order);
+  }, [folders]);
+
+  const getChildFolders = useCallback((parentId: string) => {
+    return folders.filter(f => f.parent_id === parentId).sort((a, b) => a.order - b.order);
+  }, [folders]);
 
   const handleMinimize = useCallback(async () => {
     try {
@@ -760,6 +984,149 @@ function App() {
             <span>Etkinlik Geçmişi</span>
           </button>
         </nav>
+
+        {/* Folders Section */}
+        <div className="sidebar-folders">
+          <div className="sidebar-folders-header">
+            <span className="sidebar-folders-title">Klasörler</span>
+            <button
+              className="sidebar-folder-add"
+              onClick={() => {
+                setEditingFolder(null);
+                setShowFolderModal(true);
+              }}
+              title="Yeni Klasör"
+            >
+              <FolderPlus size={16} />
+            </button>
+          </div>
+          <div className="sidebar-folders-list">
+            {folders.length === 0 ? (
+              <div className="sidebar-folders-empty">
+                <FolderIcon size={20} />
+                <span>Henüz klasör yok</span>
+              </div>
+            ) : (
+              <>
+                {/* All entries option */}
+                <button
+                  className={`folder-item ${!selectedFolder ? 'active' : ''}`}
+                  onClick={() => setSelectedFolder(null)}
+                >
+                  <FolderIcon size={16} />
+                  <span>Tüm Kayıtlar</span>
+                </button>
+                {/* Render root folders */}
+                {rootFolders.map(folder => (
+                  <div key={folder.id} className="folder-item-wrapper">
+                    <div
+                      className={`folder-item ${selectedFolder === folder.id ? 'active' : ''}`}
+                      onClick={() => setSelectedFolder(folder.id)}
+                      style={{ '--folder-color': folder.color } as React.CSSProperties}
+                    >
+                      {getChildFolders(folder.id).length > 0 && (
+                        <button
+                          className="folder-expand"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedFolders(prev => {
+                              const next = new Set(prev);
+                              if (next.has(folder.id)) {
+                                next.delete(folder.id);
+                              } else {
+                                next.add(folder.id);
+                              }
+                              return next;
+                            });
+                          }}
+                        >
+                          <ChevronRight
+                            size={14}
+                            className={expandedFolders.has(folder.id) ? 'rotated' : ''}
+                          />
+                        </button>
+                      )}
+                      <div
+                        className="folder-color-dot"
+                        style={{ backgroundColor: folder.color }}
+                      />
+                      <span className="folder-name">{folder.name}</span>
+                      {folderCounts[folder.id] > 0 && (
+                        <span className="folder-count">{folderCounts[folder.id]}</span>
+                      )}
+                      <button
+                        className="folder-menu-btn"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setFolderMenuOpen(folderMenuOpen === folder.id ? null : folder.id);
+                        }}
+                      >
+                        <MoreHorizontal size={14} />
+                      </button>
+                    </div>
+                    {folderMenuOpen === folder.id && (
+                      <div className="folder-menu">
+                        <button
+                          onClick={() => {
+                            setEditingFolder(folder);
+                            setShowFolderModal(true);
+                            setFolderMenuOpen(null);
+                          }}
+                        >
+                          <Edit3 size={14} />
+                          <span>Düzenle</span>
+                        </button>
+                        <button
+                          className="danger"
+                          onClick={() => {
+                            setConfirmDialog({
+                              message: `"${folder.name}" klasörünü silmek istediğinize emin misiniz?`,
+                              onConfirm: () => {
+                                deleteFolder(folder.id);
+                                setConfirmDialog(null);
+                                setFolderMenuOpen(null);
+                              }
+                            });
+                          }}
+                        >
+                          <Trash2 size={14} />
+                          <span>Sil</span>
+                        </button>
+                      </div>
+                    )}
+                    {/* Child folders */}
+                    {expandedFolders.has(folder.id) && getChildFolders(folder.id).map(child => (
+                      <div
+                        key={child.id}
+                        className={`folder-item folder-item-child ${selectedFolder === child.id ? 'active' : ''}`}
+                        onClick={() => setSelectedFolder(child.id)}
+                        style={{ '--folder-color': child.color } as React.CSSProperties}
+                      >
+                        <div
+                          className="folder-color-dot"
+                          style={{ backgroundColor: child.color }}
+                        />
+                        <span className="folder-name">{child.name}</span>
+                        {folderCounts[child.id] > 0 && (
+                          <span className="folder-count">{folderCounts[child.id]}</span>
+                        )}
+                        <button
+                          className="folder-menu-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setFolderMenuOpen(folderMenuOpen === child.id ? null : child.id);
+                          }}
+                        >
+                          <MoreHorizontal size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </div>
 
         <div className="sidebar-footer">
           <button 
@@ -1073,6 +1440,20 @@ function App() {
         />
       )}
 
+      {/* Folder Modal */}
+      {showFolderModal && (
+        <FolderModal
+          folder={editingFolder}
+          folders={folders}
+          onClose={() => {
+            setShowFolderModal(false);
+            setEditingFolder(null);
+          }}
+          onCreate={createFolder}
+          onUpdate={updateFolder}
+        />
+      )}
+
       {toast && (
         <div className={`toast toast-${toast.type}`}>
           {toast.type === 'success' && <CheckCircle size={20} />}
@@ -1255,7 +1636,7 @@ const CustomDropdown = memo(function CustomDropdown({ value, onChange, options }
   );
 });
 
-function AddEntryModal({ onClose, showToast, initialCategory = 'accounts' }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void; initialCategory?: string }) {
+function AddEntryModal({ onClose, showToast, initialCategory = 'accounts', selectedFolder }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void; initialCategory?: string; selectedFolder?: string | null }) {
   const [category, setCategory] = useState(initialCategory);
 
   useEffect(() => {
@@ -1275,18 +1656,18 @@ function AddEntryModal({ onClose, showToast, initialCategory = 'accounts' }: { o
   return (
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal-content modal-card-form" onClick={(e) => e.stopPropagation()}>
-        {category === 'accounts' && <AddAccountModal onClose={onClose} showToast={showToast} />}
-        {category === 'bank_cards' && <AddBankCardModal onClose={onClose} showToast={showToast} />}
-        {category === 'documents' && <AddDocumentModal onClose={onClose} showToast={showToast} />}
-        {category === 'addresses' && <AddAddressModal onClose={onClose} showToast={showToast} />}
-        {category === 'notes' && <AddNoteModal onClose={onClose} showToast={showToast} />}
-        {category === 'passkeys' && <AddPasskeyModal onClose={onClose} showToast={showToast} />}
+        {category === 'accounts' && <AddAccountModal onClose={onClose} showToast={showToast} folderId={selectedFolder} />}
+        {category === 'bank_cards' && <AddBankCardModal onClose={onClose} showToast={showToast} folderId={selectedFolder} />}
+        {category === 'documents' && <AddDocumentModal onClose={onClose} showToast={showToast} folderId={selectedFolder} />}
+        {category === 'addresses' && <AddAddressModal onClose={onClose} showToast={showToast} folderId={selectedFolder} />}
+        {category === 'notes' && <AddNoteModal onClose={onClose} showToast={showToast} folderId={selectedFolder} />}
+        {category === 'passkeys' && <AddPasskeyModal onClose={onClose} showToast={showToast} folderId={selectedFolder} />}
       </div>
     </div>
   );
 }
 
-function AddAccountModal({ onClose, showToast }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+function AddAccountModal({ onClose, showToast, folderId }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void; folderId?: string | null }) {
   const [title, setTitle] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -1329,6 +1710,7 @@ function AddAccountModal({ onClose, showToast }: { onClose: () => void; showToas
         url: url.trim() || null,
         notes: notes.trim() || null,
         category: 'accounts',
+        folderId: folderId || null,
       });
 
       try {
@@ -1427,7 +1809,7 @@ function AddAccountModal({ onClose, showToast }: { onClose: () => void; showToas
   );
 }
 
-function AddBankCardModal({ onClose, showToast }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+function AddBankCardModal({ onClose, showToast, folderId }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void; folderId?: string | null }) {
   const [cardName, setCardName] = useState('');
   const [cardNumber, setCardNumber] = useState('');
   const [expiryMonth, setExpiryMonth] = useState('');
@@ -1488,8 +1870,9 @@ function AddBankCardModal({ onClose, showToast }: { onClose: () => void; showToa
         url: null,
         notes: JSON.stringify(cardData),
         category: 'bank_cards',
+        folderId: folderId || null,
       });
-      
+
       try {
         await invoke('log_activity', {
           action: 'create',
@@ -1499,7 +1882,7 @@ function AddBankCardModal({ onClose, showToast }: { onClose: () => void; showToa
       } catch (logError) {
         console.error('Activity log error:', logError);
       }
-      
+
       showToast('Banka kartı başarıyla eklendi', 'success');
       setTimeout(() => {
         onClose();
@@ -1873,7 +2256,7 @@ function AddBankCardModal({ onClose, showToast }: { onClose: () => void; showToa
   );
 }
 
-function AddDocumentModal({ onClose, showToast }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+function AddDocumentModal({ onClose, showToast, folderId }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void; folderId?: string | null }) {
   const [documentName, setDocumentName] = useState('');
   const [documentType, setDocumentType] = useState('');
   const [filePath, setFilePath] = useState('');
@@ -1900,8 +2283,9 @@ function AddDocumentModal({ onClose, showToast }: { onClose: () => void; showToa
         url: null,
         notes: JSON.stringify(documentData) + (notes.trim() ? '\n' + notes.trim() : ''),
         category: 'documents',
+        folderId: folderId || null,
       });
-      
+
       try {
         await invoke('log_activity', {
           action: 'create',
@@ -1911,7 +2295,7 @@ function AddDocumentModal({ onClose, showToast }: { onClose: () => void; showToa
       } catch (logError) {
         console.error('Activity log error:', logError);
       }
-      
+
       showToast('Belge başarıyla eklendi', 'success');
       setTimeout(() => {
         onClose();
@@ -1984,7 +2368,7 @@ function AddDocumentModal({ onClose, showToast }: { onClose: () => void; showToa
   );
 }
 
-function AddAddressModal({ onClose, showToast }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void }) {
+function AddAddressModal({ onClose, showToast, folderId }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void; folderId?: string | null }) {
   const [addressName, setAddressName] = useState('');
   const [streetAddress, setStreetAddress] = useState('');
   const [city, setCity] = useState('');
@@ -2017,8 +2401,9 @@ function AddAddressModal({ onClose, showToast }: { onClose: () => void; showToas
         url: null,
         notes: JSON.stringify(addressData) + (notes.trim() ? '\n' + notes.trim() : ''),
         category: 'addresses',
+        folderId: folderId || null,
       });
-      
+
       try {
         await invoke('log_activity', {
           action: 'create',
@@ -2028,7 +2413,7 @@ function AddAddressModal({ onClose, showToast }: { onClose: () => void; showToas
       } catch (logError) {
         console.error('Activity log error:', logError);
       }
-      
+
       showToast('Adres başarıyla eklendi', 'success');
       setTimeout(() => {
         onClose();
