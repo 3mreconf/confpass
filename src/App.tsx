@@ -2,10 +2,10 @@ import { useState, useEffect, useMemo, useCallback, useRef, memo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { listen } from '@tauri-apps/api/event';
-import { Lock, Unlock, Plus, Search, Key, Shield, Settings as SettingsIcon, Home, CheckCircle, XCircle, Info, AlertCircle, ChevronDown, Minus, Maximize2, X, Grid3x3, Star, Download, HelpCircle, AlertTriangle, Eye, EyeOff, Copy, Clock, KeyRound, Fingerprint, Folder as FolderIcon, FolderPlus, MoreHorizontal, Edit3, Trash2, ChevronRight } from 'lucide-react';
+import { Lock, Unlock, Plus, Search, Key, Shield, Settings as SettingsIcon, Home, CheckCircle, XCircle, Info, AlertCircle, ChevronDown, Minus, Maximize2, X, Grid3x3, Star, Download, HelpCircle, AlertTriangle, Clock, KeyRound, Fingerprint, Folder as FolderIcon, FolderPlus, MoreHorizontal, Edit3, Trash2, ChevronRight } from 'lucide-react';
 import { version as appVersion } from '../package.json';
 import { CATEGORY_NAMES, CATEGORY_OPTIONS, DEBOUNCE_DELAY, AUTO_LOCK_TIMEOUT, TOAST_DURATION } from './constants';
-import { clearClipboard, validateUrl } from './utils';
+import { validateUrl } from './utils';
 import type { PasswordEntry, ToastMessage, ConfirmDialog, BankCardData, DocumentData, AddressData, PasskeyData, Folder } from './types';
 import EntryCard from './components/EntryCard';
 import Settings from './components/Settings';
@@ -1626,62 +1626,6 @@ function App() {
     </div>
   );
 }
-
-const CustomDropdown = memo(function CustomDropdown({ value, onChange, options }: { value: string; onChange: (value: string) => void; options: { value: string; label: string }[] }) {
-  const [isOpen, setIsOpen] = useState(false);
-  const selectedLabel = useMemo(() => options.find(opt => opt.value === value)?.label || value, [options, value]);
-
-  useEffect(() => {
-    const handleClickOutside = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (!target.closest('.custom-dropdown')) {
-        setIsOpen(false);
-      }
-    };
-
-    if (isOpen) {
-      document.addEventListener('mousedown', handleClickOutside);
-      return () => document.removeEventListener('mousedown', handleClickOutside);
-    }
-  }, [isOpen]);
-
-  const handleToggle = useCallback(() => {
-    setIsOpen(prev => !prev);
-  }, []);
-
-  const handleSelect = useCallback((optionValue: string) => {
-    onChange(optionValue);
-    setIsOpen(false);
-  }, [onChange]);
-
-  return (
-    <div className="custom-dropdown">
-      <button
-        type="button"
-        className="custom-dropdown-button"
-        onClick={handleToggle}
-      >
-        <span>{selectedLabel}</span>
-        <ChevronDown size={16} className={isOpen ? 'open' : ''} />
-      </button>
-      {isOpen && (
-        <div className="custom-dropdown-menu">
-          {options.map(option => (
-            <button
-              key={option.value}
-              type="button"
-              className={`custom-dropdown-item ${value === option.value ? 'selected' : ''}`}
-              onClick={() => handleSelect(option.value)}
-            >
-              {option.label}
-              {value === option.value && <CheckCircle size={16} />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-});
 
 function AddEntryModal({ onClose, showToast, initialCategory = 'accounts', selectedFolder }: { onClose: () => void; showToast: (message: string, type?: 'success' | 'error' | 'info') => void; initialCategory?: string; selectedFolder?: string | null }) {
   const [category, setCategory] = useState(initialCategory);
