@@ -1,0 +1,88 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800">
+  <defs>
+    <linearGradient id="bg3" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a0c"/>
+      <stop offset="100%" style="stop-color:#1a1a1f"/>
+    </linearGradient>
+    <filter id="shadow3">
+      <feDropShadow dx="0" dy="10" stdDeviation="20" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+    <filter id="glow3">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="800" fill="url(#bg3)"/>
+
+  <!-- Title -->
+  <text x="640" y="70" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="bold" fill="#fafafa">Güçlü Şifre Oluşturucu</text>
+  <text x="640" y="110" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="22" fill="#a1a1aa">Kırılması imkansız şifreler</text>
+
+  <!-- Password generator card -->
+  <g transform="translate(340, 150)">
+    <rect x="0" y="0" width="600" height="500" rx="20" fill="#1f1f24" filter="url(#shadow3)"/>
+
+    <!-- Header -->
+    <text x="300" y="50" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="24" font-weight="bold" fill="#fafafa">Şifre Oluşturucu</text>
+
+    <!-- Generated password -->
+    <rect x="40" y="80" width="520" height="70" rx="12" fill="#2a2a30"/>
+    <text x="60" y="125" font-family="Consolas, monospace" font-size="24" fill="#f59e0b" filter="url(#glow3)">Kx9#mP2$vL7@nQ4!</text>
+
+    <!-- Strength indicator -->
+    <rect x="40" y="170" width="520" height="8" rx="4" fill="#2a2a30"/>
+    <rect x="40" y="170" width="520" height="8" rx="4" fill="#10b981"/>
+    <text x="300" y="200" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#10b981">Çok Güçlü</text>
+
+    <!-- Options -->
+    <text x="40" y="250" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#a1a1aa">Uzunluk: 16</text>
+    <rect x="140" y="235" width="200" height="6" rx="3" fill="#2a2a30"/>
+    <rect x="140" y="235" width="140" height="6" rx="3" fill="#f59e0b"/>
+    <circle cx="280" cy="238" r="10" fill="#f59e0b"/>
+
+    <!-- Checkboxes -->
+    <rect x="40" y="280" width="24" height="24" rx="6" fill="#f59e0b"/>
+    <text x="36" y="300" font-size="16" fill="#0a0a0c">✓</text>
+    <text x="75" y="298" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#fafafa">Büyük Harfler (A-Z)</text>
+
+    <rect x="300" y="280" width="24" height="24" rx="6" fill="#f59e0b"/>
+    <text x="296" y="300" font-size="16" fill="#0a0a0c">✓</text>
+    <text x="335" y="298" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#fafafa">Küçük Harfler (a-z)</text>
+
+    <rect x="40" y="320" width="24" height="24" rx="6" fill="#f59e0b"/>
+    <text x="36" y="340" font-size="16" fill="#0a0a0c">✓</text>
+    <text x="75" y="338" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#fafafa">Rakamlar (0-9)</text>
+
+    <rect x="300" y="320" width="24" height="24" rx="6" fill="#f59e0b"/>
+    <text x="296" y="340" font-size="16" fill="#0a0a0c">✓</text>
+    <text x="335" y="338" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#fafafa">Semboller (!@#$)</text>
+
+    <!-- Buttons -->
+    <rect x="40" y="380" width="250" height="50" rx="10" fill="#2a2a30" stroke="#f59e0b" stroke-width="2"/>
+    <text x="165" y="412" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600" fill="#f59e0b">🔄 Yenile</text>
+
+    <rect x="310" y="380" width="250" height="50" rx="10" fill="#f59e0b"/>
+    <text x="435" y="412" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="16" font-weight="600" fill="#0a0a0c">📋 Kopyala</text>
+  </g>
+
+  <!-- Side info -->
+  <g transform="translate(100, 200)">
+    <text x="0" y="0" font-family="Segoe UI, Arial, sans-serif" font-size="64" fill="#f59e0b" opacity="0.3">🔒</text>
+    <text x="0" y="100" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#71717a">256-bit</text>
+    <text x="0" y="120" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#71717a">Entropi</text>
+  </g>
+
+  <g transform="translate(1050, 200)">
+    <text x="0" y="0" font-family="Segoe UI, Arial, sans-serif" font-size="64" fill="#f59e0b" opacity="0.3">⚡</text>
+    <text x="0" y="100" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#71717a">Anında</text>
+    <text x="0" y="120" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#71717a">Üretim</text>
+  </g>
+
+  <!-- Bottom text -->
+  <text x="640" y="750" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="18" fill="#71717a">Özelleştirilebilir güçlü şifreler oluşturun</text>
+</svg>

@@ -1,29 +1,71 @@
+const NATIVE_HOST_NAME = 'com.confpass.password';
 const API_BASE = 'http://127.0.0.1:1421';
+const USE_NATIVE_MESSAGING = true;
 
 async function callAPI(endpoint, data = null) {
-  try {
-    const options = {
-      method: data ? 'POST' : 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-    };
+  if (USE_NATIVE_MESSAGING) {
+    return new Promise((resolve) => {
+      // Endpoint'teki slash'i kaldır (örn: /get_password -> get_password)
+      const messageType = endpoint.startsWith('/') ? endpoint.substring(1) : endpoint;
 
-    if (data) {
-      options.body = JSON.stringify(data);
+      const message = {
+        type: messageType,
+        ...data
+      };
+
+      // Native host ile iletişim
+      console.log('[ConfPass Background] Sending to native host:', message);
+
+      try {
+        chrome.runtime.sendNativeMessage(NATIVE_HOST_NAME, message, (response) => {
+          if (chrome.runtime.lastError) {
+            console.error('[ConfPass Background] Native Host Error:', chrome.runtime.lastError.message);
+            resolve({
+              success: false,
+              error: 'Bağlantı hatası: Native Host bulunamadı veya yapılandırılmadı. Lütfen uygulamayı yeniden yükleyin.'
+            });
+            return;
+          }
+
+          if (!response) {
+            resolve({ success: false, error: 'Empty response from native host' });
+            return;
+          }
+
+          console.log('[ConfPass Background] Native Host Response:', response);
+          resolve(response);
+        });
+      } catch (e) {
+        console.error('[ConfPass Background] Exception:', e);
+        resolve({ success: false, error: e.message });
+      }
+    });
+  } else {
+    // Legacy generic HTTP fetch (Not secure for Auth guarded endpoints)
+    try {
+      const options = {
+        method: data ? 'POST' : 'GET',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      };
+
+      if (data) {
+        options.body = JSON.stringify(data);
+      }
+
+      const response = await fetch(`${API_BASE}${endpoint}`, options);
+
+      if (!response.ok) {
+        return { success: false, error: `HTTP ${response.status}` };
+      }
+
+      const result = await response.json();
+      return result;
+    } catch (error) {
+      console.error('[ConfPass Background] API error:', error);
+      return { success: false, error: error.message };
     }
-
-    const response = await fetch(`${API_BASE}${endpoint}`, options);
-
-    if (!response.ok) {
-      return { success: false, error: `HTTP ${response.status}` };
-    }
-
-    const result = await response.json();
-    return result;
-  } catch (error) {
-    console.error('[ConfPass Background] API error:', error);
-    return { success: false, error: error.message };
   }
 }
 

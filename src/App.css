@@ -695,6 +695,23 @@ body::before {
   flex-shrink: 0;
 }
 
+.sidebar-logo-img {
+  filter: drop-shadow(0 0 12px var(--accent-glow));
+  flex-shrink: 0;
+  animation: sidebarLogoPulse 3s ease-in-out infinite;
+}
+
+@keyframes sidebarLogoPulse {
+  0%, 100% {
+    transform: scale(1);
+    filter: drop-shadow(0 0 12px var(--accent-glow));
+  }
+  50% {
+    transform: scale(1.05);
+    filter: drop-shadow(0 0 18px var(--accent-glow));
+  }
+}
+
 .sidebar-logo h2 {
   font-family: var(--font-display);
   font-size: 1.25rem;

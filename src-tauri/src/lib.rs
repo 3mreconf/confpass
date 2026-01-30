@@ -1,29 +1,51 @@
-use serde::{Deserialize, Serialize};
-use tauri::Emitter;
-use std::collections::HashMap;
-use std::sync::{Mutex, MutexGuard};
-use once_cell::sync::Lazy;
+use aes_gcm::{
+    aead::{Aead, AeadCore, KeyInit, OsRng},
+    Aes256Gcm, Nonce,
+};
 use axum::{
     http::StatusCode,
     response::Json,
     routing::{get, post},
     Router,
 };
-use tower_http::cors::{Any, CorsLayer};
-use serde_json::json;
-use std::time::{SystemTime, UNIX_EPOCH, Duration};
-use std::path::PathBuf;
-use std::fs;
-use aes_gcm::{
-    aead::{Aead, AeadCore, KeyInit, OsRng},
-    Aes256Gcm, Nonce,
-};
+use base64::{engine::general_purpose, Engine as _};
+use once_cell::sync::Lazy;
 use pbkdf2::pbkdf2_hmac;
-use sha2::Sha256;
-use std::env;
 use rand::RngCore;
-use base64::{Engine as _, engine::general_purpose};
+use serde::{Deserialize, Serialize};
+use serde_json::json;
+use sha2::Sha256;
+use std::collections::HashMap;
+use std::env;
+use std::fs;
+use std::io::Write;
+use std::path::PathBuf;
+use std::sync::{Mutex, MutexGuard};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use tauri::Emitter;
+use tower_http::cors::{Any, CorsLayer};
 use zeroize::{Zeroize, ZeroizeOnDrop};
+// Auto-Type Dependencies
+use active_win_pos_rs::get_active_window;
+// use enigo::{Enigo, KeyboardControllable};
+use enigo::{Enigo, Key, Keyboard, Settings}; // Adjusting based on potential 0.2 API or newer
+use std::thread; // Check version compatibility or use * for simplicity in loose binding scenario
+                 // use rdev::{listen, Event, EventType, Key}; // Rdev will be used in a separate thread
+
+// DEBUG LOGGER
+fn log_to_file(msg: &str) {
+    if let Ok(mut file) = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open("C:\\Users\\Public\\confpass_debug.txt")
+    {
+        let time = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs();
+        let _ = writeln!(file, "[{}] {}", time, msg);
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct PasswordEntry {
@@ -36,6 +58,8 @@ pub struct PasswordEntry {
     pub created_at: i64,
     pub updated_at: i64,
     pub category: String,
+    #[serde(default)]
+    pub extra_fields: Option<HashMap<String, String>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -79,29 +103,44 @@ impl std::fmt::Display for VaultError {
 }
 
 fn get_state() -> Result<MutexGuard<'static, VaultState>, VaultError> {
-    VAULT_STATE.lock().map_err(|_| VaultError::InternalError("Mutex lock failed".to_string()))
+    VAULT_STATE
+        .lock()
+        .map_err(|_| VaultError::InternalError("Mutex lock failed".to_string()))
 }
 
 fn get_state_mut() -> Result<MutexGuard<'static, VaultState>, VaultError> {
-    VAULT_STATE.lock().map_err(|_| VaultError::InternalError("Mutex lock failed".to_string()))
+    VAULT_STATE
+        .lock()
+        .map_err(|_| VaultError::InternalError("Mutex lock failed".to_string()))
 }
 
-fn validate_input(input: &str, min_len: usize, max_len: usize, field_name: &str) -> Result<(), VaultError> {
+fn validate_input(
+    input: &str,
+    min_len: usize,
+    max_len: usize,
+    field_name: &str,
+) -> Result<(), VaultError> {
     let len = input.len();
     if len < min_len {
-        return Err(VaultError::InvalidInput(format!("{} en az {} karakter olmalı", field_name, min_len)));
+        return Err(VaultError::InvalidInput(format!(
+            "{} en az {} karakter olmalı",
+            field_name, min_len
+        )));
     }
     if len > max_len {
-        return Err(VaultError::InvalidInput(format!("{} en fazla {} karakter olabilir", field_name, max_len)));
+        return Err(VaultError::InvalidInput(format!(
+            "{} en fazla {} karakter olabilir",
+            field_name, max_len
+        )));
     }
     Ok(())
 }
 
 fn check_rate_limit(state: &mut VaultState) -> Result<(), VaultError> {
     const MAX_ATTEMPTS: u32 = 5;
-    
+
     let now = SystemTime::now();
-    
+
     if let Some(last_attempt) = state.last_attempt_time {
         if let Ok(elapsed) = now.duration_since(last_attempt) {
             if elapsed > state.rate_limit_window {
@@ -114,7 +153,7 @@ fn check_rate_limit(state: &mut VaultState) -> Result<(), VaultError> {
     } else if state.failed_attempts >= MAX_ATTEMPTS {
         return Err(VaultError::RateLimited);
     }
-    
+
     Ok(())
 }
 
@@ -133,9 +172,7 @@ impl Default for VaultState {
     }
 }
 
-static VAULT_STATE: Lazy<Mutex<VaultState>> = Lazy::new(|| {
-    Mutex::new(VaultState::default())
-});
+static VAULT_STATE: Lazy<Mutex<VaultState>> = Lazy::new(|| Mutex::new(VaultState::default()));
 
 #[derive(ZeroizeOnDrop)]
 struct SecurePassword(String);
@@ -144,7 +181,7 @@ impl SecurePassword {
     fn new(password: String) -> Self {
         SecurePassword(password)
     }
-    
+
     fn as_str(&self) -> &str {
         &self.0
     }
@@ -167,6 +204,9 @@ static MASTER_PASSWORD: Lazy<Mutex<Option<SecurePassword>>> = Lazy::new(|| Mutex
 // Global AppHandle for HTTP server to emit events
 static APP_HANDLE: Lazy<Mutex<Option<tauri::AppHandle>>> = Lazy::new(|| Mutex::new(None));
 
+// Auth Token for HTTP server
+static AUTH_TOKEN: Lazy<Mutex<Option<String>>> = Lazy::new(|| Mutex::new(None));
+
 fn set_app_handle(handle: tauri::AppHandle) {
     if let Ok(mut app_handle) = APP_HANDLE.lock() {
         *app_handle = Some(handle);
@@ -184,17 +224,19 @@ fn get_vault_path() -> Result<PathBuf, String> {
             .map_err(|_| "APPDATA environment variable bulunamadı".to_string())?
             .join("ConfPass")
     } else if cfg!(target_os = "macos") {
-        let home = env::var("HOME")
-            .map_err(|_| "HOME environment variable bulunamadı".to_string())?;
-        PathBuf::from(home).join("Library").join("Application Support").join("ConfPass")
+        let home =
+            env::var("HOME").map_err(|_| "HOME environment variable bulunamadı".to_string())?;
+        PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join("ConfPass")
     } else {
-        let home = env::var("HOME")
-            .map_err(|_| "HOME environment variable bulunamadı".to_string())?;
+        let home =
+            env::var("HOME").map_err(|_| "HOME environment variable bulunamadı".to_string())?;
         PathBuf::from(home).join(".config").join("confpass")
     };
-    
-    fs::create_dir_all(&app_data_dir)
-        .map_err(|e| format!("Directory oluşturulamadı: {}", e))?;
+
+    fs::create_dir_all(&app_data_dir).map_err(|e| format!("Directory oluşturulamadı: {}", e))?;
     Ok(app_data_dir.join("vault.dat"))
 }
 
@@ -206,43 +248,48 @@ fn derive_encryption_key(master_password: &str, salt: &[u8]) -> [u8; 32] {
 
 fn encrypt_vault_data(data: &str, master_password: &str, salt: &[u8]) -> Result<String, String> {
     let key = derive_encryption_key(master_password, salt);
-    let cipher = Aes256Gcm::new_from_slice(&key)
-        .map_err(|e| format!("Cipher oluşturulamadı: {}", e))?;
+    let cipher =
+        Aes256Gcm::new_from_slice(&key).map_err(|e| format!("Cipher oluşturulamadı: {}", e))?;
     let nonce = Aes256Gcm::generate_nonce(&mut OsRng);
-    
-    let ciphertext = cipher.encrypt(&nonce, data.as_bytes())
+
+    let ciphertext = cipher
+        .encrypt(&nonce, data.as_bytes())
         .map_err(|e| format!("Şifreleme hatası: {}", e))?;
-    
+
     let mut encrypted = nonce.to_vec();
     encrypted.extend_from_slice(&ciphertext);
-    
+
     Ok(general_purpose::STANDARD.encode(&encrypted))
 }
 
-fn decrypt_vault_data(encrypted_data: &str, master_password: &str, salt: &[u8]) -> Result<String, String> {
+fn decrypt_vault_data(
+    encrypted_data: &str,
+    master_password: &str,
+    salt: &[u8],
+) -> Result<String, String> {
     let encrypted_bytes = match general_purpose::STANDARD.decode(encrypted_data) {
         Ok(bytes) => bytes,
         Err(e) => return Err(format!("Base64 decode hatası: {}", e)),
     };
-    
+
     if encrypted_bytes.len() < 12 {
         return Err("Geçersiz şifreli veri uzunluğu".to_string());
     }
-    
+
     let nonce = Nonce::from_slice(&encrypted_bytes[..12]);
     let ciphertext = &encrypted_bytes[12..];
-    
+
     let key = derive_encryption_key(master_password, salt);
     let cipher = match Aes256Gcm::new_from_slice(&key) {
         Ok(c) => c,
         Err(e) => return Err(format!("Cipher oluşturulamadı: {}", e)),
     };
-    
+
     let plaintext = match cipher.decrypt(nonce, ciphertext) {
         Ok(pt) => pt,
         Err(_) => return Err("Decrypt hatası: Yanlış şifre veya bozuk veri".to_string()),
     };
-    
+
     match String::from_utf8(plaintext) {
         Ok(s) => Ok(s),
         Err(e) => Err(format!("UTF-8 decode hatası: {}", e)),
@@ -251,56 +298,62 @@ fn decrypt_vault_data(encrypted_data: &str, master_password: &str, salt: &[u8]) 
 
 fn save_vault_to_disk(state: &VaultState, master_password: &str) -> Result<(), String> {
     let vault_path = get_vault_path()?;
-    let vault_dir = vault_path.parent()
+    let vault_dir = vault_path
+        .parent()
         .ok_or_else(|| "Vault path parent bulunamadı".to_string())?;
-    
-    fs::create_dir_all(&vault_dir)
-        .map_err(|e| format!("Vault dizini oluşturulamadı: {}", e))?;
-    
+
+    fs::create_dir_all(&vault_dir).map_err(|e| format!("Vault dizini oluşturulamadı: {}", e))?;
+
     let salt_path = vault_dir.join("vault.salt");
-    
+
     let salt = if let Some(ref stored_salt) = state.encryption_salt {
-        general_purpose::STANDARD.decode(stored_salt)
+        general_purpose::STANDARD
+            .decode(stored_salt)
             .map_err(|e| format!("Salt decode hatası: {}", e))?
     } else {
         let mut new_salt = [0u8; 32];
         rand::thread_rng().fill_bytes(&mut new_salt);
         let salt_b64 = general_purpose::STANDARD.encode(&new_salt);
-        
-        fs::write(&salt_path, &salt_b64)
-            .map_err(|e| format!("Salt dosyası yazılamadı: {}", e))?;
-        
+
+        fs::write(&salt_path, &salt_b64).map_err(|e| format!("Salt dosyası yazılamadı: {}", e))?;
+
         new_salt.to_vec()
     };
-    
+
     if !salt_path.exists() {
         let salt_b64 = general_purpose::STANDARD.encode(&salt);
-        fs::write(&salt_path, &salt_b64)
-            .map_err(|e| format!("Salt dosyası yazılamadı: {}", e))?;
+        fs::write(&salt_path, &salt_b64).map_err(|e| format!("Salt dosyası yazılamadı: {}", e))?;
     }
-    
+
     let entries_vec: Vec<PasswordEntry> = state.entries.values().cloned().collect();
     let vault_data = VaultData {
         entries: entries_vec,
-        master_password_hash: state.master_password_hash.clone()
+        master_password_hash: state
+            .master_password_hash
+            .clone()
             .ok_or_else(|| "Master password hash bulunamadı".to_string())?,
         encryption_salt: general_purpose::STANDARD.encode(&salt),
     };
-    
-    let json_data = serde_json::to_string(&vault_data)
-        .map_err(|e| format!("JSON serialize hatası: {}", e))?;
-    
+
+    let json_data =
+        serde_json::to_string(&vault_data).map_err(|e| format!("JSON serialize hatası: {}", e))?;
+
     let encrypted = encrypt_vault_data(&json_data, master_password, &salt)?;
-    
+
+    let tmp_path = vault_path.with_extension("dat.tmp");
     use std::fs::File;
     use std::io::Write;
-    let mut file = File::create(&vault_path)
-        .map_err(|e| format!("Dosya açma hatası: {} (Path: {:?})", e, vault_path))?;
+    let mut file = File::create(&tmp_path)
+        .map_err(|e| format!("Geçici dosya oluşturulamadı: {} (Path: {:?})", e, tmp_path))?;
     file.write_all(encrypted.as_bytes())
         .map_err(|e| format!("Dosya yazma hatası: {}", e))?;
     file.sync_all()
         .map_err(|e| format!("Dosya senkronizasyon hatası: {}", e))?;
-    
+    drop(file); // Dosya handle'ını kapat
+
+    fs::rename(&tmp_path, &vault_path)
+        .map_err(|e| format!("Dosya değiştirme (rename) hatası: {}", e))?;
+
     Ok(())
 }
 
@@ -309,16 +362,16 @@ fn load_vault_from_disk(master_password: &str) -> Result<VaultState, String> {
         Ok(p) => p,
         Err(e) => return Err(format!("Vault path hatası: {}", e)),
     };
-    
+
     if !vault_path.exists() {
         return Err("Vault dosyası bulunamadı".to_string());
     }
-    
+
     let salt_path = match vault_path.parent() {
         Some(p) => p.join("vault.salt"),
         None => return Err("Vault path parent bulunamadı".to_string()),
     };
-    
+
     let salt = if salt_path.exists() {
         let salt_b64 = match fs::read_to_string(&salt_path) {
             Ok(s) => s,
@@ -331,35 +384,35 @@ fn load_vault_from_disk(master_password: &str) -> Result<VaultState, String> {
     } else {
         return Ok(VaultState::default());
     };
-    
+
     if salt.len() != 32 {
         return Err("Geçersiz salt uzunluğu".to_string());
     }
-    
+
     let encrypted_data = match fs::read_to_string(&vault_path) {
         Ok(d) => d,
         Err(e) => return Err(format!("Dosya okuma hatası: {}", e)),
     };
-    
+
     if encrypted_data.trim().is_empty() {
         return Err("Vault dosyası boş".to_string());
     }
-    
+
     let decrypted_json = match decrypt_vault_data(&encrypted_data, master_password, &salt) {
         Ok(d) => d,
         Err(e) => return Err(format!("Decrypt hatası: {}", e)),
     };
-    
+
     let vault_data: VaultData = match serde_json::from_str(&decrypted_json) {
         Ok(d) => d,
         Err(e) => return Err(format!("JSON parse hatası: {}", e)),
     };
-    
+
     let mut entries = HashMap::with_capacity(vault_data.entries.len());
     for entry in vault_data.entries {
         entries.insert(entry.id.clone(), entry);
     }
-    
+
     Ok(VaultState {
         entries,
         master_password_hash: Some(vault_data.master_password_hash),
@@ -375,35 +428,39 @@ fn load_vault_from_disk(master_password: &str) -> Result<VaultState, String> {
 #[tauri::command]
 fn unlock_vault(mut master_password: String) -> Result<bool, String> {
     validate_input(&master_password, 8, 128, "Ana şifre").map_err(|e| e.to_string())?;
-    
+
     let vault_path = get_vault_path()?;
     let vault_exists = vault_path.exists();
-    
+
     if !vault_exists {
         let mut state = get_state_mut().map_err(|e| e.to_string())?;
-        
+
         check_rate_limit(&mut state).map_err(|e| e.to_string())?;
-        
+
         use argon2::password_hash::{PasswordHasher, SaltString};
         use argon2::Argon2;
         use rand::rngs::OsRng;
-        
+
         let salt = SaltString::generate(&mut OsRng);
-        let argon2 = Argon2::default();
+        let argon2 = Argon2::new(
+            argon2::Algorithm::Argon2id,
+            argon2::Version::V0x13,
+            argon2::Params::new(65536, 3, 4, None).unwrap(), // 64MB memory, 3 iterations, 4 lanes
+        );
         let hash = argon2
             .hash_password(master_password.as_bytes(), &salt)
             .map_err(|e| format!("Hash error: {}", e))?;
-        
+
         state.master_password_hash = Some(hash.to_string());
         state.vault_locked = false;
         state.failed_attempts = 0;
         state.last_attempt_time = None;
-        
+
         {
             let mut master_pwd = MASTER_PASSWORD.lock().unwrap();
             *master_pwd = Some(SecurePassword::new(master_password.clone()));
         }
-        
+
         let state_snapshot = VaultState {
             entries: state.entries.clone(),
             master_password_hash: state.master_password_hash.clone(),
@@ -415,7 +472,7 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
             encryption_salt: state.encryption_salt.clone(),
         };
         drop(state);
-        
+
         save_vault_to_disk(&state_snapshot, &master_password)?;
 
         // [SÜPER YAMA] İlk kurulumda da şifreyi kaydet
@@ -429,12 +486,16 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
         master_password.zeroize();
         return Ok(true);
     }
-    
+
     let loaded_state = match load_vault_from_disk(&master_password) {
         Ok(state) => state,
         Err(e) => {
             let mut state = get_state_mut().map_err(|e| e.to_string())?;
-            if e.contains("Decrypt hatası") || e.contains("decrypt") || e.contains("Şifre çözme") || e.contains("decrypt") {
+            if e.contains("Decrypt hatası")
+                || e.contains("decrypt")
+                || e.contains("Şifre çözme")
+                || e.contains("decrypt")
+            {
                 state.failed_attempts += 1;
                 state.last_attempt_time = Some(SystemTime::now());
                 return Err("Yanlış ana şifre".to_string());
@@ -444,20 +505,19 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
             return Err(format!("Vault yüklenemedi: {}", e));
         }
     };
-    
+
     let mut state = get_state_mut().map_err(|e| e.to_string())?;
     check_rate_limit(&mut state).map_err(|e| e.to_string())?;
-    
+
     use argon2::password_hash::{PasswordHash, PasswordVerifier};
     use argon2::Argon2;
-    
-    let stored_hash = loaded_state.master_password_hash.as_ref()
-        .ok_or_else(|| {
-            state.failed_attempts += 1;
-            state.last_attempt_time = Some(SystemTime::now());
-            "Hash bulunamadı".to_string()
-        })?;
-    
+
+    let stored_hash = loaded_state.master_password_hash.as_ref().ok_or_else(|| {
+        state.failed_attempts += 1;
+        state.last_attempt_time = Some(SystemTime::now());
+        "Hash bulunamadı".to_string()
+    })?;
+
     let parsed_hash = match PasswordHash::new(stored_hash) {
         Ok(h) => h,
         Err(e) => {
@@ -466,7 +526,7 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
             return Err(format!("Hash parse hatası: {}", e));
         }
     };
-    
+
     let argon2 = Argon2::default();
     match argon2.verify_password(master_password.as_bytes(), &parsed_hash) {
         Ok(()) => {
@@ -476,7 +536,7 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
             state.vault_locked = false;
             state.failed_attempts = 0;
             state.last_attempt_time = None;
-            
+
             drop(state);
 
             // [SÜPER YAMA] Şifre doğrulandığı an Windows Kasasına yaz
@@ -490,7 +550,7 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
                         } else {
                             println!("[SUCCESS] Windows Kasasına yazıldı!");
                         }
-                    },
+                    }
                     Err(e) => eprintln!("[ERROR] Keyring girişi oluşturulamadı: {}", e),
                 }
             }
@@ -517,25 +577,27 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
 #[tauri::command]
 fn lock_vault() -> Result<(), String> {
     let mut state = get_state_mut().map_err(|e| e.to_string())?;
-    
-    let master_pwd = MASTER_PASSWORD.lock()
+
+    let master_pwd = MASTER_PASSWORD
+        .lock()
         .map_err(|_| "Master password lock hatası".to_string())?;
-    
+
     if let Some(ref pwd) = *master_pwd {
         save_vault_to_disk(&state, pwd.as_str())
             .map_err(|e| format!("Kilitlenmeden önce kaydetme hatası: {}", e))?;
     }
     drop(master_pwd);
-    
+
     state.vault_locked = true;
-    
+    state.entries.clear(); // [Deep Lock] Clear entries from memory when locked
+
     {
         let mut master_pwd = MASTER_PASSWORD.lock().unwrap();
         if let Some(mut pwd) = master_pwd.take() {
             pwd.zeroize();
         }
     }
-    
+
     Ok(())
 }
 
@@ -545,12 +607,14 @@ fn is_vault_locked() -> Result<bool, String> {
     if !vault_path.exists() {
         return Ok(true);
     }
-    
-    let master_pwd = MASTER_PASSWORD.lock().map_err(|_| "Lock hatası".to_string())?;
+
+    let master_pwd = MASTER_PASSWORD
+        .lock()
+        .map_err(|_| "Lock hatası".to_string())?;
     if master_pwd.is_none() {
         return Ok(true);
     }
-    
+
     let state = get_state().map_err(|e| e.to_string())?;
     Ok(state.vault_locked)
 }
@@ -563,25 +627,39 @@ fn add_password_entry(
     url: Option<String>,
     notes: Option<String>,
     category: String,
+    extra_fields: Option<HashMap<String, String>>,
 ) -> Result<PasswordEntry, String> {
     let mut state = get_state_mut().map_err(|e| e.to_string())?;
-    
+
     if state.vault_locked {
         return Err(VaultError::Locked.to_string());
     }
-    
+
     validate_input(&title, 1, 200, "Başlık").map_err(|e| e.to_string())?;
-    
-    const VALID_CATEGORIES: &[&str] = &["accounts", "bank_cards", "documents", "addresses", "notes", "passkeys", "authenticator"];
+
+    const VALID_CATEGORIES: &[&str] = &[
+        "accounts",
+        "bank_cards",
+        "documents",
+        "addresses",
+        "notes",
+        "passkeys",
+        "authenticator",
+    ];
     if !VALID_CATEGORIES.contains(&category.as_str()) {
         return Err("Geçersiz kategori".to_string());
     }
-    
-    if category != "notes" && category != "passkeys" && category != "authenticator" && category != "addresses" && category != "documents" {
+
+    if category != "notes"
+        && category != "passkeys"
+        && category != "authenticator"
+        && category != "addresses"
+        && category != "documents"
+    {
         validate_input(&username, 1, 200, "Kullanıcı adı").map_err(|e| e.to_string())?;
         validate_input(&password, 1, 500, "Şifre").map_err(|e| e.to_string())?;
     }
-    
+
     if let Some(ref url_str) = url {
         if !url_str.is_empty() {
             if !url_str.starts_with("http://") && !url_str.starts_with("https://") {
@@ -590,56 +668,60 @@ fn add_password_entry(
             validate_input(url_str, 1, 500, "URL").map_err(|e| e.to_string())?;
         }
     }
-    
+
     if let Some(ref notes_str) = notes {
         validate_input(notes_str, 0, 5000, "Notlar").map_err(|e| e.to_string())?;
     }
-    
+
     let id = format!("entry_{}", uuid::Uuid::new_v4());
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| format!("Time error: {}", e))?
         .as_secs() as i64;
-    
+
     let entry = PasswordEntry {
         id: id.clone(),
         title: title.trim().to_string(),
         username: username.trim().to_string(),
         password,
         url: url.map(|u| u.trim().to_string()).filter(|u| !u.is_empty()),
-        notes: notes.map(|n| n.trim().to_string()).filter(|n| !n.is_empty()),
+        notes: notes
+            .map(|n| n.trim().to_string())
+            .filter(|n| !n.is_empty()),
         created_at: now,
         updated_at: now,
         category,
+        extra_fields,
     };
-    
+
     let entry_clone = entry.clone();
     state.entries.insert(id, entry);
-    
+
     let pwd_string = {
-        let master_pwd = MASTER_PASSWORD.lock()
+        let master_pwd = MASTER_PASSWORD
+            .lock()
             .map_err(|_| "Master password lock hatası".to_string())?;
-        
-        let pwd = master_pwd.as_ref()
+
+        let pwd = master_pwd
+            .as_ref()
             .ok_or_else(|| "Master password bulunamadı. Lütfen kasa kilidini açın.".to_string())?;
-        
+
         pwd.as_str().to_string()
     };
-    
-    save_vault_to_disk(&state, &pwd_string)
-        .map_err(|e| format!("Kayıt kaydedilemedi: {}", e))?;
-    
+
+    save_vault_to_disk(&state, &pwd_string).map_err(|e| format!("Kayıt kaydedilemedi: {}", e))?;
+
     Ok(entry_clone)
 }
 
 #[tauri::command]
 fn get_password_entries() -> Result<Vec<PasswordEntry>, String> {
     let state = get_state().map_err(|e| e.to_string())?;
-    
+
     if state.vault_locked {
         return Err(VaultError::Locked.to_string());
     }
-    
+
     let mut entries: Vec<PasswordEntry> = state.entries.values().cloned().collect();
     entries.sort_unstable_by(|a, b| b.updated_at.cmp(&a.updated_at));
     Ok(entries)
@@ -648,12 +730,13 @@ fn get_password_entries() -> Result<Vec<PasswordEntry>, String> {
 #[tauri::command]
 fn get_password_entry(id: String) -> Result<PasswordEntry, String> {
     let state = get_state().map_err(|e| e.to_string())?;
-    
+
     if state.vault_locked {
         return Err(VaultError::Locked.to_string());
     }
-    
-    state.entries
+
+    state
+        .entries
         .get(&id)
         .cloned()
         .ok_or_else(|| VaultError::NotFound.to_string())
@@ -670,26 +753,38 @@ fn update_password_entry(
     category: Option<String>,
 ) -> Result<PasswordEntry, String> {
     let mut state = get_state_mut().map_err(|e| e.to_string())?;
-    
+
     if state.vault_locked {
         return Err(VaultError::Locked.to_string());
     }
-    
-    let entry = state.entries.get_mut(&id)
+
+    let entry = state
+        .entries
+        .get_mut(&id)
         .ok_or_else(|| VaultError::NotFound.to_string())?;
-    
+
     if let Some(t) = title {
         validate_input(&t, 1, 200, "Başlık").map_err(|e| e.to_string())?;
         entry.title = t.trim().to_string();
     }
     if let Some(u) = username {
-        if entry.category != "notes" && entry.category != "passkeys" && entry.category != "authenticator" && entry.category != "addresses" && entry.category != "documents" {
+        if entry.category != "notes"
+            && entry.category != "passkeys"
+            && entry.category != "authenticator"
+            && entry.category != "addresses"
+            && entry.category != "documents"
+        {
             validate_input(&u, 1, 200, "Kullanıcı adı").map_err(|e| e.to_string())?;
         }
         entry.username = u.trim().to_string();
     }
     if let Some(p) = password {
-        if entry.category != "notes" && entry.category != "passkeys" && entry.category != "authenticator" && entry.category != "addresses" && entry.category != "documents" {
+        if entry.category != "notes"
+            && entry.category != "passkeys"
+            && entry.category != "authenticator"
+            && entry.category != "addresses"
+            && entry.category != "documents"
+        {
             validate_input(&p, 1, 500, "Şifre").map_err(|e| e.to_string())?;
         }
         entry.password = p;
@@ -714,57 +809,71 @@ fn update_password_entry(
         }
     }
     if let Some(c) = category {
-        const VALID_CATEGORIES: &[&str] = &["accounts", "bank_cards", "documents", "addresses", "notes", "passkeys", "authenticator"];
+        const VALID_CATEGORIES: &[&str] = &[
+            "accounts",
+            "bank_cards",
+            "documents",
+            "addresses",
+            "notes",
+            "passkeys",
+            "authenticator",
+        ];
         if !VALID_CATEGORIES.contains(&c.as_str()) {
             return Err("Geçersiz kategori".to_string());
         }
         entry.category = c;
     }
-    
+
     entry.updated_at = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .map_err(|e| format!("Time error: {}", e))?
         .as_secs() as i64;
-    
+
     let entry_clone = entry.clone();
-    
+
     let pwd_string = {
-        let master_pwd = MASTER_PASSWORD.lock()
+        let master_pwd = MASTER_PASSWORD
+            .lock()
             .map_err(|_| "Master password lock hatası".to_string())?;
-        
-        let pwd = master_pwd.as_ref()
+
+        let pwd = master_pwd
+            .as_ref()
             .ok_or_else(|| "Master password bulunamadı. Lütfen kasa kilidini açın.".to_string())?;
-        
+
         pwd.as_str().to_string()
     };
-    
+
     save_vault_to_disk(&state, &pwd_string)
         .map_err(|e| format!("Güncelleme kaydedilemedi: {}", e))?;
-    
+
     Ok(entry_clone)
 }
 
 #[tauri::command]
 fn delete_password_entry(id: String) -> Result<(), String> {
     let mut state = get_state_mut().map_err(|e| e.to_string())?;
-    
+
     if state.vault_locked {
         return Err(VaultError::Locked.to_string());
     }
-    
-    state.entries.remove(&id)
+
+    state
+        .entries
+        .remove(&id)
         .ok_or_else(|| VaultError::NotFound.to_string())?;
-    
+
     let pwd_string = {
-        let master_pwd = MASTER_PASSWORD.lock()
+        let master_pwd = MASTER_PASSWORD
+            .lock()
             .map_err(|_| "Master password lock hatası".to_string())?;
-        
-        let pwd = master_pwd.as_ref()
+
+        let pwd = master_pwd
+            .as_ref()
             .ok_or_else(|| "Master password bulunamadı. Lütfen kasa kilidini açın.".to_string())?;
-        
+
         pwd.as_str().to_string()
     };
-    
+
     save_vault_to_disk(&state, &pwd_string)
         .map_err(|e| format!("Silme işlemi kaydedilemedi: {}", e))?;
 
@@ -779,7 +888,9 @@ fn soft_delete_authenticator(id: String) -> Result<(), String> {
         return Err(VaultError::Locked.to_string());
     }
 
-    let entry = state.entries.get_mut(&id)
+    let entry = state
+        .entries
+        .get_mut(&id)
         .ok_or_else(|| VaultError::NotFound.to_string())?;
 
     // Move to trash by changing category
@@ -790,17 +901,18 @@ fn soft_delete_authenticator(id: String) -> Result<(), String> {
     }
 
     let pwd_string = {
-        let master_pwd = MASTER_PASSWORD.lock()
+        let master_pwd = MASTER_PASSWORD
+            .lock()
             .map_err(|_| "Master password lock hatası".to_string())?;
 
-        let pwd = master_pwd.as_ref()
+        let pwd = master_pwd
+            .as_ref()
             .ok_or_else(|| "Master password bulunamadı".to_string())?;
 
         pwd.as_str().to_string()
     };
 
-    save_vault_to_disk(&state, &pwd_string)
-        .map_err(|e| format!("İşlem kaydedilemedi: {}", e))?;
+    save_vault_to_disk(&state, &pwd_string).map_err(|e| format!("İşlem kaydedilemedi: {}", e))?;
 
     Ok(())
 }
@@ -813,7 +925,9 @@ fn restore_authenticator(id: String) -> Result<(), String> {
         return Err(VaultError::Locked.to_string());
     }
 
-    let entry = state.entries.get_mut(&id)
+    let entry = state
+        .entries
+        .get_mut(&id)
         .ok_or_else(|| VaultError::NotFound.to_string())?;
 
     // Restore from trash
@@ -824,17 +938,18 @@ fn restore_authenticator(id: String) -> Result<(), String> {
     }
 
     let pwd_string = {
-        let master_pwd = MASTER_PASSWORD.lock()
+        let master_pwd = MASTER_PASSWORD
+            .lock()
             .map_err(|_| "Master password lock hatası".to_string())?;
 
-        let pwd = master_pwd.as_ref()
+        let pwd = master_pwd
+            .as_ref()
             .ok_or_else(|| "Master password bulunamadı".to_string())?;
 
         pwd.as_str().to_string()
     };
 
-    save_vault_to_disk(&state, &pwd_string)
-        .map_err(|e| format!("İşlem kaydedilemedi: {}", e))?;
+    save_vault_to_disk(&state, &pwd_string).map_err(|e| format!("İşlem kaydedilemedi: {}", e))?;
 
     Ok(())
 }
@@ -848,7 +963,9 @@ fn permanently_delete_authenticator(id: String) -> Result<(), String> {
     }
 
     // Only allow permanent deletion from trash
-    let entry = state.entries.get(&id)
+    let entry = state
+        .entries
+        .get(&id)
         .ok_or_else(|| VaultError::NotFound.to_string())?;
 
     if entry.category != "authenticator_trash" {
@@ -858,10 +975,12 @@ fn permanently_delete_authenticator(id: String) -> Result<(), String> {
     state.entries.remove(&id);
 
     let pwd_string = {
-        let master_pwd = MASTER_PASSWORD.lock()
+        let master_pwd = MASTER_PASSWORD
+            .lock()
             .map_err(|_| "Master password lock hatası".to_string())?;
 
-        let pwd = master_pwd.as_ref()
+        let pwd = master_pwd
+            .as_ref()
             .ok_or_else(|| "Master password bulunamadı".to_string())?;
 
         pwd.as_str().to_string()
@@ -881,17 +1000,23 @@ fn soft_delete_passkey(id: String) -> Result<(), String> {
         return Err(VaultError::Locked.to_string());
     }
 
-    let entry = state.entries.get_mut(&id)
+    let entry = state
+        .entries
+        .get_mut(&id)
         .ok_or_else(|| VaultError::NotFound.to_string())?;
 
     // Move to trash by changing category
     if entry.category == "passkeys" {
         // Extract credentialId before changing category
-        let credential_id_to_delete = entry.notes.as_ref().and_then(|notes| {
-            serde_json::from_str::<serde_json::Value>(notes).ok()
-        }).and_then(|json| {
-            json.get("credentialId").and_then(|v| v.as_str()).map(|s| s.to_string())
-        });
+        let credential_id_to_delete = entry
+            .notes
+            .as_ref()
+            .and_then(|notes| serde_json::from_str::<serde_json::Value>(notes).ok())
+            .and_then(|json| {
+                json.get("credentialId")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            });
 
         entry.category = "passkeys_trash".to_string();
 
@@ -902,7 +1027,10 @@ fn soft_delete_passkey(id: String) -> Result<(), String> {
                 passkeys.retain(|p| p.credential_id != cred_id);
                 if passkeys.len() < original_len {
                     let _ = save_passkeys(&passkeys);
-                    eprintln!("[Passkey Delete] Removed passkey with credentialId: {} from passkeys.json", cred_id);
+                    eprintln!(
+                        "[Passkey Delete] Removed passkey with credentialId: {} from passkeys.json",
+                        cred_id
+                    );
                 }
             }
         }
@@ -911,17 +1039,18 @@ fn soft_delete_passkey(id: String) -> Result<(), String> {
     }
 
     let pwd_string = {
-        let master_pwd = MASTER_PASSWORD.lock()
+        let master_pwd = MASTER_PASSWORD
+            .lock()
             .map_err(|_| "Master password lock hatası".to_string())?;
 
-        let pwd = master_pwd.as_ref()
+        let pwd = master_pwd
+            .as_ref()
             .ok_or_else(|| "Master password bulunamadı".to_string())?;
 
         pwd.as_str().to_string()
     };
 
-    save_vault_to_disk(&state, &pwd_string)
-        .map_err(|e| format!("İşlem kaydedilemedi: {}", e))?;
+    save_vault_to_disk(&state, &pwd_string).map_err(|e| format!("İşlem kaydedilemedi: {}", e))?;
 
     Ok(())
 }
@@ -934,42 +1063,55 @@ fn restore_passkey(id: String) -> Result<(), String> {
         return Err(VaultError::Locked.to_string());
     }
 
-    let entry = state.entries.get_mut(&id)
+    let entry = state
+        .entries
+        .get_mut(&id)
         .ok_or_else(|| VaultError::NotFound.to_string())?;
 
     // Restore from trash
     if entry.category == "passkeys_trash" {
         // Extract passkey data from notes to restore to passkeys.json
-        let passkey_to_restore = entry.notes.as_ref().and_then(|notes| {
-            serde_json::from_str::<serde_json::Value>(notes).ok()
-        }).and_then(|json| {
-            let credential_id = json.get("credentialId").and_then(|v| v.as_str())?;
-            let private_key = json.get("privateKey").and_then(|v| v.as_str())?;
-            let rp_id = json.get("rpId").or(json.get("domain")).and_then(|v| v.as_str())?;
-            let rp_name = json.get("rpName").and_then(|v| v.as_str()).unwrap_or("");
-            let user_id = json.get("userId").and_then(|v| v.as_str()).unwrap_or("");
-            let user_name = json.get("username").and_then(|v| v.as_str()).unwrap_or("");
-            let user_display_name = json.get("userDisplayName").and_then(|v| v.as_str()).unwrap_or(user_name);
-            let counter = json.get("counter").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-            let created_at = json.get("createdAt").and_then(|v| v.as_i64()).unwrap_or_else(|| {
-                std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs() as i64)
-                    .unwrap_or(0)
-            });
+        let passkey_to_restore = entry
+            .notes
+            .as_ref()
+            .and_then(|notes| serde_json::from_str::<serde_json::Value>(notes).ok())
+            .and_then(|json| {
+                let credential_id = json.get("credentialId").and_then(|v| v.as_str())?;
+                let private_key = json.get("privateKey").and_then(|v| v.as_str())?;
+                let rp_id = json
+                    .get("rpId")
+                    .or(json.get("domain"))
+                    .and_then(|v| v.as_str())?;
+                let rp_name = json.get("rpName").and_then(|v| v.as_str()).unwrap_or("");
+                let user_id = json.get("userId").and_then(|v| v.as_str()).unwrap_or("");
+                let user_name = json.get("username").and_then(|v| v.as_str()).unwrap_or("");
+                let user_display_name = json
+                    .get("userDisplayName")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or(user_name);
+                let counter = json.get("counter").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
+                let created_at = json
+                    .get("createdAt")
+                    .and_then(|v| v.as_i64())
+                    .unwrap_or_else(|| {
+                        std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|d| d.as_secs() as i64)
+                            .unwrap_or(0)
+                    });
 
-            Some(StoredPasskey {
-                credential_id: credential_id.to_string(),
-                private_key: private_key.to_string(),
-                rp_id: rp_id.to_string(),
-                rp_name: rp_name.to_string(),
-                user_id: user_id.to_string(),
-                user_name: user_name.to_string(),
-                user_display_name: user_display_name.to_string(),
-                counter,
-                created_at,
-            })
-        });
+                Some(StoredPasskey {
+                    credential_id: credential_id.to_string(),
+                    private_key: private_key.to_string(),
+                    rp_id: rp_id.to_string(),
+                    rp_name: rp_name.to_string(),
+                    user_id: user_id.to_string(),
+                    user_name: user_name.to_string(),
+                    user_display_name: user_display_name.to_string(),
+                    counter,
+                    created_at,
+                })
+            });
 
         entry.category = "passkeys".to_string();
 
@@ -977,31 +1119,37 @@ fn restore_passkey(id: String) -> Result<(), String> {
         if let Some(passkey) = passkey_to_restore {
             if let Ok(mut passkeys) = load_passkeys() {
                 // Check if not already exists
-                if !passkeys.iter().any(|p| p.credential_id == passkey.credential_id) {
+                if !passkeys
+                    .iter()
+                    .any(|p| p.credential_id == passkey.credential_id)
+                {
                     passkeys.push(passkey);
                     let _ = save_passkeys(&passkeys);
                     eprintln!("[Passkey Restore] Restored passkey to passkeys.json");
                 }
             }
         } else {
-            eprintln!("[Passkey Restore] Warning: Could not extract passkey data from notes for restore");
+            eprintln!(
+                "[Passkey Restore] Warning: Could not extract passkey data from notes for restore"
+            );
         }
     } else {
         return Err("Bu giriş çöp kutusunda değil".to_string());
     }
 
     let pwd_string = {
-        let master_pwd = MASTER_PASSWORD.lock()
+        let master_pwd = MASTER_PASSWORD
+            .lock()
             .map_err(|_| "Master password lock hatası".to_string())?;
 
-        let pwd = master_pwd.as_ref()
+        let pwd = master_pwd
+            .as_ref()
             .ok_or_else(|| "Master password bulunamadı".to_string())?;
 
         pwd.as_str().to_string()
     };
 
-    save_vault_to_disk(&state, &pwd_string)
-        .map_err(|e| format!("İşlem kaydedilemedi: {}", e))?;
+    save_vault_to_disk(&state, &pwd_string).map_err(|e| format!("İşlem kaydedilemedi: {}", e))?;
 
     Ok(())
 }
@@ -1015,7 +1163,9 @@ fn permanently_delete_passkey(id: String) -> Result<(), String> {
     }
 
     // Only allow permanent deletion from trash
-    let entry = state.entries.get(&id)
+    let entry = state
+        .entries
+        .get(&id)
         .ok_or_else(|| VaultError::NotFound.to_string())?;
 
     if entry.category != "passkeys_trash" {
@@ -1023,19 +1173,25 @@ fn permanently_delete_passkey(id: String) -> Result<(), String> {
     }
 
     // Extract credentialId from notes to delete from passkeys.json
-    let credential_id_to_delete = entry.notes.as_ref().and_then(|notes| {
-        serde_json::from_str::<serde_json::Value>(notes).ok()
-    }).and_then(|json| {
-        json.get("credentialId").and_then(|v| v.as_str()).map(|s| s.to_string())
-    });
+    let credential_id_to_delete = entry
+        .notes
+        .as_ref()
+        .and_then(|notes| serde_json::from_str::<serde_json::Value>(notes).ok())
+        .and_then(|json| {
+            json.get("credentialId")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        });
 
     state.entries.remove(&id);
 
     let pwd_string = {
-        let master_pwd = MASTER_PASSWORD.lock()
+        let master_pwd = MASTER_PASSWORD
+            .lock()
             .map_err(|_| "Master password lock hatası".to_string())?;
 
-        let pwd = master_pwd.as_ref()
+        let pwd = master_pwd
+            .as_ref()
             .ok_or_else(|| "Master password bulunamadı".to_string())?;
 
         pwd.as_str().to_string()
@@ -1051,7 +1207,10 @@ fn permanently_delete_passkey(id: String) -> Result<(), String> {
             passkeys.retain(|p| p.credential_id != cred_id);
             if passkeys.len() < original_len {
                 let _ = save_passkeys(&passkeys);
-                eprintln!("[Passkey Delete] Removed passkey with credentialId: {} from passkeys.json", cred_id);
+                eprintln!(
+                    "[Passkey Delete] Removed passkey with credentialId: {} from passkeys.json",
+                    cred_id
+                );
             }
         }
     }
@@ -1081,14 +1240,14 @@ fn generate_password(
         if include_symbols {
             chars.push_str("!@#$%^&*()_+-=[]{}|;:,.<>?");
         }
-        
+
         if chars.is_empty() {
             return Err("At least one character type must be selected".to_string());
         }
-        
+
         chars
     };
-    
+
     use rand::Rng;
     let mut rng = rand::thread_rng();
     let charset_bytes = charset.as_bytes();
@@ -1098,7 +1257,7 @@ fn generate_password(
             charset_bytes[idx] as char
         })
         .collect();
-    
+
     Ok(password)
 }
 
@@ -1111,7 +1270,7 @@ fn check_password_strength(password: String) -> Result<serde_json::Value, String
     let mut has_lowercase = false;
     let mut has_numeric = false;
     let mut has_symbol = false;
-    
+
     for ch in password.chars() {
         if ch.is_uppercase() {
             has_uppercase = true;
@@ -1126,48 +1285,48 @@ fn check_password_strength(password: String) -> Result<serde_json::Value, String
             has_symbol = true;
         }
     }
-    
+
     if len >= 8 {
         score += 1;
     } else {
         feedback.push("Password should be at least 8 characters long".to_string());
     }
-    
+
     if has_uppercase {
         score += 1;
     } else {
         feedback.push("Add uppercase letters".to_string());
     }
-    
+
     if has_lowercase {
         score += 1;
     } else {
         feedback.push("Add lowercase letters".to_string());
     }
-    
+
     if has_numeric {
         score += 1;
     } else {
         feedback.push("Add numbers".to_string());
     }
-    
+
     if has_symbol {
         score += 1;
     } else {
         feedback.push("Add special characters".to_string());
     }
-    
+
     if len >= 12 {
         score += 1;
     }
-    
+
     let strength = match score {
         0..=2 => "Zayıf",
         3..=4 => "Orta",
         5..=6 => "Güçlü",
         _ => "Çok Güçlü",
     };
-    
+
     Ok(serde_json::json!({
         "score": score,
         "strength": strength,
@@ -1178,50 +1337,64 @@ fn check_password_strength(password: String) -> Result<serde_json::Value, String
 #[tauri::command]
 fn find_password_by_url(url: String) -> Result<Option<PasswordEntry>, String> {
     let state = get_state().map_err(|e| e.to_string())?;
-    
+
     if state.vault_locked {
         return Err(VaultError::Locked.to_string());
     }
-    
+
     if url.trim().is_empty() {
         return Err(VaultError::InvalidInput("URL boş olamaz".to_string()).to_string());
     }
-    
+
     let url_lower = url.trim().to_lowercase();
     let url_domain = extract_domain(&url_lower);
-    
-    let matching_entry = state.entries.values()
-        .find(|entry| {
-            entry.url.as_ref().map_or(false, |entry_url| {
-                let entry_url_lower = entry_url.to_lowercase();
-                entry_url_lower.contains(&url_lower) || 
-                url_domain.as_ref().map_or(false, |domain| entry_url_lower.contains(domain))
-            })
-        });
-    
+
+    let matching_entry = state.entries.values().find(|entry| {
+        entry.url.as_ref().map_or(false, |entry_url| {
+            let entry_url_lower = entry_url.to_lowercase();
+            entry_url_lower.contains(&url_lower)
+                || url_domain
+                    .as_ref()
+                    .map_or(false, |domain| entry_url_lower.contains(domain))
+        })
+    });
+
     Ok(matching_entry.cloned())
 }
 
 fn extract_domain(url: &str) -> Option<String> {
-    let url = url.trim();
-    if url.is_empty() {
+    let url_str = url.trim();
+    if url_str.is_empty() {
         return None;
     }
 
-    // Remove protocol prefix if present
-    let without_protocol = url.strip_prefix("http://")
-        .or_else(|| url.strip_prefix("https://"))
-        .unwrap_or(url);
+    // Try to parse using Url crate
+    // If it fails (e.g. no protocol), try adding https://
+    let parsed_url = url::Url::parse(url_str)
+        .or_else(|_| url::Url::parse(&format!("https://{}", url_str)))
+        .ok();
 
-    // Remove www. prefix if present
-    let without_www = without_protocol.strip_prefix("www.")
+    if let Some(u) = parsed_url {
+        if let Some(host) = u.host_str() {
+            // Remove www. prefix if present
+            let domain = host.strip_prefix("www.").unwrap_or(host);
+            return Some(domain.to_lowercase());
+        }
+    }
+
+    // Fallback: simple split if everything fails (should be rare with Url crate)
+    let without_protocol = url_str
+        .strip_prefix("http://")
+        .or_else(|| url_str.strip_prefix("https://"))
+        .unwrap_or(url_str);
+
+    let without_www = without_protocol
+        .strip_prefix("www.")
         .unwrap_or(without_protocol);
 
-    // Get the hostname part (before any path)
     let domain = without_www.split('/').next().unwrap_or(without_www);
-
-    // Remove port if present
     let domain = domain.split(':').next().unwrap_or(domain);
+    let domain = domain.split('?').next().unwrap_or(domain); // Handle queries
 
     if domain.is_empty() {
         None
@@ -1233,11 +1406,11 @@ fn extract_domain(url: &str) -> Option<String> {
 #[tauri::command]
 fn export_vault() -> Result<String, String> {
     let state = get_state().map_err(|e| e.to_string())?;
-    
+
     if state.vault_locked {
         return Err(VaultError::Locked.to_string());
     }
-    
+
     let entries: Vec<&PasswordEntry> = state.entries.values().collect();
     let export_data = serde_json::json!({
         "version": "1.0",
@@ -1248,63 +1421,64 @@ fn export_vault() -> Result<String, String> {
         "entry_count": entries.len(),
         "entries": entries
     });
-    
-    serde_json::to_string_pretty(&export_data)
-        .map_err(|e| format!("Export error: {}", e))
+
+    serde_json::to_string_pretty(&export_data).map_err(|e| format!("Export error: {}", e))
 }
 
 #[tauri::command]
 fn import_vault(json_data: String) -> Result<u32, String> {
     let mut state = get_state_mut().map_err(|e| e.to_string())?;
-    
+
     if state.vault_locked {
         return Err(VaultError::Locked.to_string());
     }
-    
+
     if json_data.trim().is_empty() {
         return Err(VaultError::InvalidInput("Import data boş olamaz".to_string()).to_string());
     }
-    
-    let parsed: serde_json::Value = serde_json::from_str(&json_data)
-        .map_err(|e| format!("JSON parse error: {}", e))?;
-    
+
+    let parsed: serde_json::Value =
+        serde_json::from_str(&json_data).map_err(|e| format!("JSON parse error: {}", e))?;
+
     let entries: Vec<PasswordEntry> = if let Some(entries_array) = parsed.get("entries") {
         serde_json::from_value(entries_array.clone())
             .map_err(|e| format!("Entries parse error: {}", e))?
     } else if parsed.is_array() {
-        serde_json::from_value(parsed)
-            .map_err(|e| format!("Array parse error: {}", e))?
+        serde_json::from_value(parsed).map_err(|e| format!("Array parse error: {}", e))?
     } else {
         return Err("Geçersiz import formatı".to_string());
     };
-    
+
     let mut imported_count = 0;
     let mut skipped_count = 0;
-    
+
     for entry in entries {
         if entry.id.trim().is_empty() {
             skipped_count += 1;
             continue;
         }
-        
+
         if state.entries.contains_key(&entry.id) {
             skipped_count += 1;
             continue;
         }
-        
+
         if entry.title.trim().is_empty() || entry.username.trim().is_empty() {
             skipped_count += 1;
             continue;
         }
-        
+
         state.entries.insert(entry.id.clone(), entry);
         imported_count += 1;
     }
-    
+
     if imported_count == 0 && skipped_count > 0 {
-        return Err(format!("Hiçbir kayıt import edilemedi. {} kayıt atlandı.", skipped_count));
+        return Err(format!(
+            "Hiçbir kayıt import edilemedi. {} kayıt atlandı.",
+            skipped_count
+        ));
     }
-    
+
     if let Ok(master_pwd) = MASTER_PASSWORD.lock() {
         if let Some(ref pwd) = *master_pwd {
             if let Err(e) = save_vault_to_disk(&state, pwd.as_str()) {
@@ -1312,8 +1486,51 @@ fn import_vault(json_data: String) -> Result<u32, String> {
             }
         }
     }
-    
+
     Ok(imported_count)
+}
+
+async fn auth_middleware(
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Result<axum::response::Response, StatusCode> {
+    let auth_header = req
+        .headers()
+        .get("Authorization")
+        .and_then(|value| value.to_str().ok());
+
+    let token = {
+        let token_lock = AUTH_TOKEN
+            .lock()
+            .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+        token_lock.clone()
+    };
+
+    match (auth_header, token) {
+        (Some(auth), Some(expected)) if auth == expected => Ok(next.run(req).await),
+        _ => Err(StatusCode::UNAUTHORIZED),
+    }
+}
+
+async fn generate_and_save_auth_token() -> Result<(), String> {
+    let token = uuid::Uuid::new_v4().to_string();
+
+    // Save to memory
+    if let Ok(mut token_lock) = AUTH_TOKEN.lock() {
+        *token_lock = Some(token.clone());
+    } else {
+        return Err("Failed to lock AUTH_TOKEN".to_string());
+    }
+
+    // Save to file
+    let token_path = get_vault_path()?
+        .parent()
+        .ok_or_else(|| "Vault path parent bulunamadı".to_string())?
+        .join("native_auth_token");
+
+    fs::write(&token_path, &token).map_err(|e| format!("Token dosyası yazılamadı: {}", e))?;
+
+    Ok(())
 }
 
 async fn start_http_server() {
@@ -1329,18 +1546,27 @@ async fn start_http_server() {
         .route("/passkey_detected", post(passkey_detected_handler))
         .route("/save_passkey", post(save_passkey_handler))
         .route("/get_passkeys", post(get_passkeys_handler))
-        .route("/update_passkey_counter", post(update_passkey_counter_handler))
+        .route(
+            "/update_passkey_counter",
+            post(update_passkey_counter_handler),
+        )
         .route("/focus_window", post(focus_window_handler))
-        .route("/get_passwords_for_site", post(get_passwords_for_site_handler))
+        .route(
+            "/get_passwords_for_site",
+            post(get_passwords_for_site_handler),
+        )
         .route("/get_totp_code", post(get_totp_code_handler))
         .route("/get_cards", post(get_cards_handler))
         .route("/get_addresses", post(get_addresses_handler))
         .route("/check_duplicate", post(check_duplicate_handler))
         .route("/save_entry", post(save_entry_handler))
+        .route("/get_password_entry", post(get_password_entry_handler))
+        .layer(axum::middleware::from_fn(auth_middleware))
         .layer(cors);
 
     let listener = tokio::net::TcpListener::bind("127.0.0.1:1421").await;
     if let Ok(listener) = listener {
+        eprintln!("HTTP Server listening on 127.0.0.1:1421");
         let _ = axum::serve(listener, router).await;
     }
 }
@@ -1352,29 +1578,30 @@ async fn get_password_handler(
         Some(u) if !u.trim().is_empty() => u.to_string(),
         _ => return Err(StatusCode::BAD_REQUEST),
     };
-    
+
     let result = tokio::task::spawn_blocking(move || {
         let state = match get_state() {
             Ok(s) => s,
             Err(_) => return Err("State access error"),
         };
-        
+
         if state.vault_locked {
             return Err("Vault is locked");
         }
-        
+
         let url_lower = url.trim().to_lowercase();
         let url_domain = extract_domain(&url_lower);
-        
-        let matching_entry = state.entries.values()
-            .find(|entry| {
-                entry.url.as_ref().map_or(false, |entry_url| {
-                    let entry_url_lower = entry_url.to_lowercase();
-                    entry_url_lower.contains(&url_lower) || 
-                    url_domain.as_ref().map_or(false, |domain| entry_url_lower.contains(domain))
-                })
-            });
-        
+
+        let matching_entry = state.entries.values().find(|entry| {
+            entry.url.as_ref().map_or(false, |entry_url| {
+                let entry_url_lower = entry_url.to_lowercase();
+                entry_url_lower.contains(&url_lower)
+                    || url_domain
+                        .as_ref()
+                        .map_or(false, |domain| entry_url_lower.contains(domain))
+            })
+        });
+
         if let Some(entry) = matching_entry {
             return Ok(json!({
                 "username": entry.username,
@@ -1382,10 +1609,11 @@ async fn get_password_handler(
                 "title": entry.title
             }));
         }
-        
+
         Err("No matching entry found")
-    }).await;
-    
+    })
+    .await;
+
     match result {
         Ok(Ok(data)) => Ok(Json(json!({"success": true, "data": data}))),
         Ok(Err(msg)) => Ok(Json(json!({"success": false, "error": msg}))),
@@ -1404,32 +1632,47 @@ async fn save_password_handler(
             Ok(s) => s,
             Err(e) => return Err(e.to_string()),
         };
-        
+
         if state.vault_locked {
             return Err("Kasa kilitli".to_string());
         }
-        
-        let url = payload.get("url").and_then(|v| v.as_str()).unwrap_or("").trim();
-        let username = payload.get("username").and_then(|v| v.as_str()).unwrap_or("").trim();
-        let password = payload.get("password").and_then(|v| v.as_str()).unwrap_or("");
-        let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or("Web Site").trim();
-        
+
+        let url = payload
+            .get("url")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let username = payload
+            .get("username")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim();
+        let password = payload
+            .get("password")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let title = payload
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("Web Site")
+            .trim();
+
         if username.is_empty() {
             return Err("Kullanıcı adı gerekli".to_string());
         }
-        
+
         if password.is_empty() {
             return Err("Şifre gerekli".to_string());
         }
-        
+
         if let Err(e) = validate_input(username, 1, 200, "Kullanıcı adı") {
             return Err(e.to_string());
         }
-        
+
         if let Err(e) = validate_input(password, 1, 500, "Şifre") {
             return Err(e.to_string());
         }
-        
+
         if !url.is_empty() {
             if !url.starts_with("http://") && !url.starts_with("https://") {
                 return Err("URL http:// veya https:// ile başlamalı".to_string());
@@ -1438,33 +1681,40 @@ async fn save_password_handler(
                 return Err(e.to_string());
             }
         }
-        
+
         let id = format!("entry_{}", uuid::Uuid::new_v4());
         let now = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|e| format!("Time error: {}", e))?
             .as_secs() as i64;
-        
+
         let entry = PasswordEntry {
             id: id.clone(),
             title: title.to_string(),
             username: username.to_string(),
             password: password.to_string(),
-            url: if url.is_empty() { None } else { Some(url.to_string()) },
+            url: if url.is_empty() {
+                None
+            } else {
+                Some(url.to_string())
+            },
             notes: None,
             created_at: now,
             updated_at: now,
             category: "accounts".to_string(),
+            extra_fields: None,
         };
-        
+
         state.entries.insert(id.clone(), entry);
 
         let pwd_string = {
-            let master_pwd = MASTER_PASSWORD.lock()
+            let master_pwd = MASTER_PASSWORD
+                .lock()
                 .map_err(|_| "Master password lock hatası".to_string())?;
 
-            let pwd = master_pwd.as_ref()
-                .ok_or_else(|| "Master password bulunamadı. Lütfen kasa kilidini açın.".to_string())?;
+            let pwd = master_pwd.as_ref().ok_or_else(|| {
+                "Master password bulunamadı. Lütfen kasa kilidini açın.".to_string()
+            })?;
 
             pwd.as_str().to_string()
         };
@@ -1473,17 +1723,21 @@ async fn save_password_handler(
             .map_err(|e| format!("Browser extension kaydetme hatası: {}", e))?;
 
         Ok(id)
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(entry_id)) => {
             // Emit event to frontend to refresh entries
             if let Some(app_handle) = get_app_handle() {
-                let _ = app_handle.emit("entries-updated", serde_json::json!({
-                    "action": "add",
-                    "entry_id": entry_id,
-                    "category": "accounts"
-                }));
+                let _ = app_handle.emit(
+                    "entries-updated",
+                    serde_json::json!({
+                        "action": "add",
+                        "entry_id": entry_id,
+                        "category": "accounts"
+                    }),
+                );
                 eprintln!("[Save Password] Emitted entries-updated event");
             }
             Ok(Json(json!({"success": true})))
@@ -1506,20 +1760,36 @@ async fn passkey_detected_handler(
     let action = payload.get("action").and_then(|v| v.as_str()).unwrap_or("");
     let rp_id = payload.get("rpId").and_then(|v| v.as_str()).unwrap_or("");
     let rp_name = payload.get("rpName").and_then(|v| v.as_str()).unwrap_or("");
-    let user_name = payload.get("userName").and_then(|v| v.as_str()).unwrap_or("");
-    let user_display_name = payload.get("userDisplayName").and_then(|v| v.as_str()).unwrap_or("");
-    let credential_id = payload.get("credentialId").and_then(|v| v.as_str()).unwrap_or("");
+    let user_name = payload
+        .get("userName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let user_display_name = payload
+        .get("userDisplayName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let credential_id = payload
+        .get("credentialId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
     let url = payload.get("url").and_then(|v| v.as_str()).unwrap_or("");
 
     // Only process "created" actions (new passkey registration), not "used" (login)
     if action != "created" {
-        eprintln!("[Passkey HTTP] Ignoring action '{}' (only 'created' is processed)", action);
-        return Ok(Json(json!({"success": true, "message": "Action ignored (not a creation)"})));
+        eprintln!(
+            "[Passkey HTTP] Ignoring action '{}' (only 'created' is processed)",
+            action
+        );
+        return Ok(Json(
+            json!({"success": true, "message": "Action ignored (not a creation)"}),
+        ));
     }
 
     if rp_id.is_empty() || user_name.is_empty() {
         eprintln!("[Passkey HTTP] Missing required fields");
-        return Ok(Json(json!({"success": false, "error": "Missing required fields"})));
+        return Ok(Json(
+            json!({"success": false, "error": "Missing required fields"}),
+        ));
     }
 
     // Create passkey info to send to frontend
@@ -1541,16 +1811,22 @@ async fn passkey_detected_handler(
         match app_handle.emit("passkey-detected", passkey_info.clone()) {
             Ok(_) => {
                 eprintln!("[Passkey HTTP] Event emitted successfully to frontend");
-                Ok(Json(json!({"success": true, "message": "Passkey detected and notified"})))
+                Ok(Json(
+                    json!({"success": true, "message": "Passkey detected and notified"}),
+                ))
             }
             Err(e) => {
                 eprintln!("[Passkey HTTP] Failed to emit event: {:?}", e);
-                Ok(Json(json!({"success": false, "error": format!("Failed to emit event: {}", e)})))
+                Ok(Json(
+                    json!({"success": false, "error": format!("Failed to emit event: {}", e)}),
+                ))
             }
         }
     } else {
         eprintln!("[Passkey HTTP] App handle not available");
-        Ok(Json(json!({"success": false, "error": "App handle not available"})))
+        Ok(Json(
+            json!({"success": false, "error": "App handle not available"}),
+        ))
     }
 }
 
@@ -1596,7 +1872,8 @@ fn load_passkeys() -> Result<Vec<StoredPasskey>, String> {
 
 fn save_passkeys(passkeys: &[StoredPasskey]) -> Result<(), String> {
     let path = get_passkeys_path()?;
-    let content = serde_json::to_string_pretty(passkeys).map_err(|e| format!("Serialize error: {}", e))?;
+    let content =
+        serde_json::to_string_pretty(passkeys).map_err(|e| format!("Serialize error: {}", e))?;
     fs::write(&path, content).map_err(|e| format!("Write error: {}", e))
 }
 
@@ -1612,14 +1889,19 @@ fn sync_passkeys_with_vault() {
     }
 
     // Collect all credentialIds from vault passkey entries
-    let vault_credential_ids: std::collections::HashSet<String> = state.entries.values()
+    let vault_credential_ids: std::collections::HashSet<String> = state
+        .entries
+        .values()
         .filter(|e| e.category == "passkeys")
         .filter_map(|e| {
-            e.notes.as_ref().and_then(|notes| {
-                serde_json::from_str::<serde_json::Value>(notes).ok()
-            }).and_then(|json| {
-                json.get("credentialId").and_then(|v| v.as_str()).map(|s| s.to_string())
-            })
+            e.notes
+                .as_ref()
+                .and_then(|notes| serde_json::from_str::<serde_json::Value>(notes).ok())
+                .and_then(|json| {
+                    json.get("credentialId")
+                        .and_then(|v| v.as_str())
+                        .map(|s| s.to_string())
+                })
         })
         .collect();
 
@@ -1630,7 +1912,10 @@ fn sync_passkeys_with_vault() {
 
         if passkeys.len() < original_len {
             let removed = original_len - passkeys.len();
-            eprintln!("[Passkey Sync] Removed {} stale passkeys from passkeys.json", removed);
+            eprintln!(
+                "[Passkey Sync] Removed {} stale passkeys from passkeys.json",
+                removed
+            );
             let _ = save_passkeys(&passkeys);
         }
     }
@@ -1643,17 +1928,51 @@ async fn save_passkey_handler(
 
     eprintln!("[Passkey Storage] Saving new passkey: {:?}", payload);
 
-    let credential_id = payload.get("credentialId").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let private_key = payload.get("privateKey").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let rp_id = payload.get("rpId").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let rp_name = payload.get("rpName").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let user_id = payload.get("userId").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let user_name = payload.get("userName").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let user_display_name = payload.get("userDisplayName").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let credential_id = payload
+        .get("credentialId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let private_key = payload
+        .get("privateKey")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let rp_id = payload
+        .get("rpId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let rp_name = payload
+        .get("rpName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let user_id = payload
+        .get("userId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let user_name = payload
+        .get("userName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let user_display_name = payload
+        .get("userDisplayName")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let counter = payload.get("counter").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
-    let created_at = payload.get("createdAt").and_then(|v| v.as_i64()).unwrap_or_else(|| {
-        SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0)
-    });
+    let created_at = payload
+        .get("createdAt")
+        .and_then(|v| v.as_i64())
+        .unwrap_or_else(|| {
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0)
+        });
 
     // Clone values needed for blocking task and event
     let rp_id_clone = rp_id.clone();
@@ -1742,6 +2061,7 @@ async fn save_passkey_handler(
                 created_at: now,
                 updated_at: now,
                 category: "passkeys".to_string(),
+                extra_fields: None,
             };
 
             state.entries.insert(entry_id, entry);
@@ -1785,7 +2105,10 @@ async fn save_passkey_handler(
                 });
 
                 if let Err(e) = app_handle.emit("passkey-saved", passkey_info) {
-                    eprintln!("[Passkey Storage] Failed to emit passkey-saved event: {}", e);
+                    eprintln!(
+                        "[Passkey Storage] Failed to emit passkey-saved event: {}",
+                        e
+                    );
                 } else {
                     eprintln!("[Passkey Storage] passkey-saved event emitted to frontend");
                 }
@@ -1804,7 +2127,11 @@ async fn save_passkey_handler(
 async fn get_passkeys_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let rp_id = payload.get("rpId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let rp_id = payload
+        .get("rpId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     eprintln!("[Passkey Storage] Getting passkeys for rpId: {}", rp_id);
 
@@ -1814,22 +2141,25 @@ async fn get_passkeys_handler(
         let matching: Vec<_> = passkeys
             .into_iter()
             .filter(|p| p.rp_id == rp_id || rp_id.is_empty())
-            .map(|p| json!({
-                "credentialId": p.credential_id,
-                "privateKey": p.private_key,
-                "rpId": p.rp_id,
-                "rpName": p.rp_name,
-                "userId": p.user_id,
-                "userName": p.user_name,
-                "userDisplayName": p.user_display_name,
-                "counter": p.counter,
-                "createdAt": p.created_at
-            }))
+            .map(|p| {
+                json!({
+                    "credentialId": p.credential_id,
+                    "privateKey": p.private_key,
+                    "rpId": p.rp_id,
+                    "rpName": p.rp_name,
+                    "userId": p.user_id,
+                    "userName": p.user_name,
+                    "userDisplayName": p.user_display_name,
+                    "counter": p.counter,
+                    "createdAt": p.created_at
+                })
+            })
             .collect();
 
         eprintln!("[Passkey Storage] Found {} passkeys", matching.len());
         matching
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(passkeys) => Ok(Json(json!({"success": true, "passkeys": passkeys}))),
@@ -1843,22 +2173,33 @@ async fn get_passkeys_handler(
 async fn update_passkey_counter_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let credential_id = payload.get("credentialId").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let credential_id = payload
+        .get("credentialId")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
     let counter = payload.get("counter").and_then(|v| v.as_u64()).unwrap_or(0) as u32;
 
-    eprintln!("[Passkey Storage] Updating counter for {}: {}", credential_id, counter);
+    eprintln!(
+        "[Passkey Storage] Updating counter for {}: {}",
+        credential_id, counter
+    );
 
     let result = tokio::task::spawn_blocking(move || {
         let mut passkeys = load_passkeys()?;
 
-        if let Some(passkey) = passkeys.iter_mut().find(|p| p.credential_id == credential_id) {
+        if let Some(passkey) = passkeys
+            .iter_mut()
+            .find(|p| p.credential_id == credential_id)
+        {
             passkey.counter = counter;
             save_passkeys(&passkeys)?;
             Ok(())
         } else {
             Err("Passkey not found".to_string())
         }
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(_)) => Ok(Json(json!({"success": true}))),
@@ -1906,14 +2247,26 @@ async fn get_passwords_for_site_handler(
         let url_lower = url.trim().to_lowercase();
         let url_domain = extract_domain(&url_lower);
 
-        eprintln!("[Password Search] Searching for URL: '{}', extracted domain: {:?}", url_lower, url_domain);
+        log_to_file(&format!(
+            "SEARCH REQUEST: URL='{}' Domain='{:?}'",
+            url_lower, url_domain
+        ));
+
+        eprintln!(
+            "[Password Search] Searching for URL: '{}', extracted domain: {:?}",
+            url_lower, url_domain
+        );
 
         // Find authenticator entries for this domain to attach TOTP
-        let authenticators: Vec<_> = state.entries.values()
+        let authenticators: Vec<_> = state
+            .entries
+            .values()
             .filter(|entry| entry.category == "authenticator")
             .collect();
 
-        let matching_entries: Vec<_> = state.entries.values()
+        let matching_entries: Vec<_> = state
+            .entries
+            .values()
             .filter(|entry| {
                 // Only return "accounts" category for login autofill
                 if entry.category != "accounts" {
@@ -1924,15 +2277,43 @@ async fn get_passwords_for_site_handler(
                     let entry_url_lower = entry_url.to_lowercase();
                     let entry_domain = extract_domain(&entry_url_lower);
 
-                    // Match by domain
+                    // Match by domain with smarter logic
                     let matches = url_domain.as_ref().map_or(false, |search_domain| {
                         entry_domain.as_ref().map_or(false, |ed| {
+                            // 1. Exact match
+                            if ed == search_domain {
+                                return true;
+                            }
+
+                            // 2. Subdomain check (e.g. login.site.com matches site.com)
+                            if ed.ends_with(&format!(".{}", search_domain))
+                                || search_domain.ends_with(&format!(".{}", ed))
+                            {
+                                return true;
+                            }
+
+                            // 3. Fallback: Contains logic (dangerous but flexible)
                             ed.contains(search_domain) || search_domain.contains(ed)
                         })
                     });
 
                     if matches {
-                        eprintln!("[Password Search] MATCH: entry '{}' with domain {:?}", entry.title, entry_domain);
+                        log_to_file(&format!(
+                            "MATCH FOUND: Entry='{}' EntryDomain='{:?}'",
+                            entry.title, entry_domain
+                        ));
+                        eprintln!(
+                            "[Password Search] MATCH: entry '{}' with domain {:?}",
+                            entry.title, entry_domain
+                        );
+                    } else {
+                        // Log failed attempts for debugging (only if domain extraction worked)
+                        if let (Some(ed), Some(sd)) = (&entry_domain, &url_domain) {
+                            log_to_file(&format!(
+                                "NO MATCH: Entry='{}' EntryDomain='{}' SearchDomain='{}'",
+                                entry.title, ed, sd
+                            ));
+                        }
                     }
 
                     matches
@@ -1941,57 +2322,82 @@ async fn get_passwords_for_site_handler(
             .map(|entry| {
                 // Try to find matching TOTP for this entry
                 // Must match BOTH: same account (email/username) AND same service (issuer/domain)
-                let totp_info = authenticators.iter().find(|auth| {
-                    // Get authenticator account from notes or username field
-                    let auth_account = auth.notes.as_ref()
-                        .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
-                        .and_then(|json| json.get("account").and_then(|a| a.as_str()).map(|s| s.to_lowercase()))
-                        .unwrap_or_else(|| auth.username.to_lowercase());
-
-                    let auth_issuer = auth.notes.as_ref()
-                        .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
-                        .and_then(|json| json.get("issuer").and_then(|a| a.as_str()).map(|s| s.to_lowercase()))
-                        .unwrap_or_else(|| auth.title.to_lowercase());
-
-                    // Check if the entry's username/email matches authenticator's account
-                    let entry_username = entry.username.to_lowercase();
-                    let account_match = !entry_username.is_empty() && !auth_account.is_empty() &&
-                        (entry_username == auth_account ||
-                         entry_username.contains(&auth_account) ||
-                         auth_account.contains(&entry_username));
-
-                    // Check if entry's domain matches authenticator's issuer
-                    let domain_match = if let Some(ref url) = entry.url {
-                        let entry_domain = extract_domain(&url.to_lowercase());
-                        entry_domain.as_ref().map_or(false, |ed| {
-                            auth_issuer.contains(ed) || ed.contains(&auth_issuer)
-                        })
-                    } else {
-                        false
-                    };
-
-                    // Must match both account AND domain/issuer for accurate TOTP matching
-                    account_match && domain_match
-                }).and_then(|auth| {
-                    // Extract TOTP secret from notes
-                    auth.notes.as_ref().and_then(|notes| {
-                        serde_json::from_str::<serde_json::Value>(notes).ok()
-                    }).and_then(|json| {
-                        json.get("secret").and_then(|s| s.as_str()).map(|s| s.to_string())
-                    }).or_else(|| {
-                        // Fallback to password field if notes don't have secret
-                        if !auth.password.is_empty() { Some(auth.password.clone()) } else { None }
-                    }).and_then(|secret| {
-                        // Generate current TOTP code
-                        generate_totp_code_internal(&secret).ok().map(|code| {
-                            json!({
-                                "hasTotp": true,
-                                "totpCode": code,
-                                "totpIssuer": auth.title
+                let totp_info = authenticators
+                    .iter()
+                    .find(|auth| {
+                        // Get authenticator account from notes or username field
+                        let auth_account = auth
+                            .notes
+                            .as_ref()
+                            .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
+                            .and_then(|json| {
+                                json.get("account")
+                                    .and_then(|a| a.as_str())
+                                    .map(|s| s.to_lowercase())
                             })
-                        })
+                            .unwrap_or_else(|| auth.username.to_lowercase());
+
+                        let auth_issuer = auth
+                            .notes
+                            .as_ref()
+                            .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
+                            .and_then(|json| {
+                                json.get("issuer")
+                                    .and_then(|a| a.as_str())
+                                    .map(|s| s.to_lowercase())
+                            })
+                            .unwrap_or_else(|| auth.title.to_lowercase());
+
+                        // Check if the entry's username/email matches authenticator's account
+                        let entry_username = entry.username.to_lowercase();
+                        let account_match = !entry_username.is_empty()
+                            && !auth_account.is_empty()
+                            && (entry_username == auth_account
+                                || entry_username.contains(&auth_account)
+                                || auth_account.contains(&entry_username));
+
+                        // Check if entry's domain matches authenticator's issuer
+                        let domain_match = if let Some(ref url) = entry.url {
+                            let entry_domain = extract_domain(&url.to_lowercase());
+                            entry_domain.as_ref().map_or(false, |ed| {
+                                auth_issuer.contains(ed) || ed.contains(&auth_issuer)
+                            })
+                        } else {
+                            false
+                        };
+
+                        // Must match both account AND domain/issuer for accurate TOTP matching
+                        account_match && domain_match
                     })
-                });
+                    .and_then(|auth| {
+                        // Extract TOTP secret from notes
+                        auth.notes
+                            .as_ref()
+                            .and_then(|notes| serde_json::from_str::<serde_json::Value>(notes).ok())
+                            .and_then(|json| {
+                                json.get("secret")
+                                    .and_then(|s| s.as_str())
+                                    .map(|s| s.to_string())
+                            })
+                            .or_else(|| {
+                                // Fallback to password field if notes don't have secret
+                                if !auth.password.is_empty() {
+                                    Some(auth.password.clone())
+                                } else {
+                                    None
+                                }
+                            })
+                            .and_then(|secret| {
+                                // Generate current TOTP code
+                                generate_totp_code_internal(&secret).ok().map(|code| {
+                                    json!({
+                                        "hasTotp": true,
+                                        "totpCode": code,
+                                        "totpIssuer": auth.title
+                                    })
+                                })
+                            })
+                    });
 
                 let mut entry_json = json!({
                     "id": entry.id,
@@ -2013,13 +2419,21 @@ async fn get_passwords_for_site_handler(
             .collect();
 
         // Also find authenticators for this domain (for TOTP codes)
-        let domain_authenticators: Vec<_> = state.entries.values()
+        let domain_authenticators: Vec<_> = state
+            .entries
+            .values()
             .filter(|entry| entry.category == "authenticator")
             .filter(|auth| {
                 // Get issuer from notes or title
-                let auth_issuer = auth.notes.as_ref()
+                let auth_issuer = auth
+                    .notes
+                    .as_ref()
                     .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
-                    .and_then(|json| json.get("issuer").and_then(|a| a.as_str()).map(|s| s.to_lowercase()))
+                    .and_then(|json| {
+                        json.get("issuer")
+                            .and_then(|a| a.as_str())
+                            .map(|s| s.to_lowercase())
+                    })
                     .unwrap_or_else(|| auth.title.to_lowercase());
 
                 // Check if issuer matches domain
@@ -2029,14 +2443,32 @@ async fn get_passwords_for_site_handler(
             })
             .filter_map(|auth| {
                 // Extract TOTP secret and generate code
-                let secret = auth.notes.as_ref()
+                let secret = auth
+                    .notes
+                    .as_ref()
                     .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
-                    .and_then(|json| json.get("secret").and_then(|s| s.as_str()).map(|s| s.to_string()))
-                    .or_else(|| if !auth.password.is_empty() { Some(auth.password.clone()) } else { None })?;
+                    .and_then(|json| {
+                        json.get("secret")
+                            .and_then(|s| s.as_str())
+                            .map(|s| s.to_string())
+                    })
+                    .or_else(|| {
+                        if !auth.password.is_empty() {
+                            Some(auth.password.clone())
+                        } else {
+                            None
+                        }
+                    })?;
 
-                let account = auth.notes.as_ref()
+                let account = auth
+                    .notes
+                    .as_ref()
                     .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
-                    .and_then(|json| json.get("account").and_then(|a| a.as_str()).map(|s| s.to_string()))
+                    .and_then(|json| {
+                        json.get("account")
+                            .and_then(|a| a.as_str())
+                            .map(|s| s.to_string())
+                    })
                     .unwrap_or_else(|| auth.username.clone());
 
                 generate_totp_code_internal(&secret).ok().map(|code| {
@@ -2050,10 +2482,14 @@ async fn get_passwords_for_site_handler(
             })
             .collect();
 
-        eprintln!("[Password Search] Found {} authenticators for domain", domain_authenticators.len());
+        eprintln!(
+            "[Password Search] Found {} authenticators for domain",
+            domain_authenticators.len()
+        );
 
         Ok((matching_entries, domain_authenticators))
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok((passwords, authenticators))) => Ok(Json(json!({
@@ -2061,10 +2497,14 @@ async fn get_passwords_for_site_handler(
             "passwords": passwords,
             "authenticators": authenticators
         }))),
-        Ok(Err(msg)) => Ok(Json(json!({"success": false, "error": msg, "passwords": [], "authenticators": []}))),
+        Ok(Err(msg)) => Ok(Json(
+            json!({"success": false, "error": msg, "passwords": [], "authenticators": []}),
+        )),
         Err(e) => {
             eprintln!("Task error: {}", e);
-            Ok(Json(json!({"success": false, "passwords": [], "authenticators": []})))
+            Ok(Json(
+                json!({"success": false, "passwords": [], "authenticators": []}),
+            ))
         }
     }
 }
@@ -2072,7 +2512,11 @@ async fn get_passwords_for_site_handler(
 async fn get_totp_code_handler(
     Json(payload): Json<serde_json::Value>,
 ) -> Result<Json<serde_json::Value>, StatusCode> {
-    let domain = payload.get("domain").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let domain = payload
+        .get("domain")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
 
     eprintln!("[TOTP HTTP] Getting TOTP code for domain: {}", domain);
 
@@ -2093,16 +2537,18 @@ async fn get_totp_code_handler(
                 continue;
             }
 
-            let entry_domain = entry.url.as_ref()
+            let entry_domain = entry
+                .url
+                .as_ref()
                 .map(|u| extract_domain(&u.to_lowercase()))
                 .flatten()
                 .unwrap_or_default();
 
-            let issuer_match = entry.title.to_lowercase().contains(&domain_lower) ||
-                               domain_lower.contains(&entry.title.to_lowercase());
+            let issuer_match = entry.title.to_lowercase().contains(&domain_lower)
+                || domain_lower.contains(&entry.title.to_lowercase());
 
-            let domain_match = !entry_domain.is_empty() && 
-                              (entry_domain.contains(&domain_lower) || domain_lower.contains(&entry_domain));
+            let domain_match = !entry_domain.is_empty()
+                && (entry_domain.contains(&domain_lower) || domain_lower.contains(&entry_domain));
 
             if issuer_match || domain_match {
                 if let Some(ref notes) = entry.notes {
@@ -2143,7 +2589,8 @@ async fn get_totp_code_handler(
         }
 
         Err("No authenticator found for this domain".to_string())
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(data)) => Ok(Json(json!({"success": true, "data": data}))),
@@ -2157,31 +2604,27 @@ async fn get_totp_code_handler(
 
 fn generate_totp_code_internal(secret: &str) -> Result<String, String> {
     use totp_lite::{totp_custom, Sha1};
-    
+
     let cleaned_secret = secret.replace(" ", "").replace("-", "").to_uppercase();
-    
-    let secret_bytes = match base32::decode(base32::Alphabet::RFC4648 { padding: false }, &cleaned_secret) {
+
+    let secret_bytes = match base32::decode(
+        base32::Alphabet::RFC4648 { padding: false },
+        &cleaned_secret,
+    ) {
         Some(bytes) if !bytes.is_empty() => bytes,
-        _ => {
-            match base64::engine::general_purpose::STANDARD.decode(secret) {
-                Ok(bytes) if !bytes.is_empty() => bytes,
-                _ => return Err("Geçersiz TOTP secret formatı".to_string()),
-            }
-        }
+        _ => match base64::engine::general_purpose::STANDARD.decode(secret) {
+            Ok(bytes) if !bytes.is_empty() => bytes,
+            _ => return Err("Geçersiz TOTP secret formatı".to_string()),
+        },
     };
-    
+
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| format!("Zaman hatası: {}", e))?
         .as_secs();
-    
-    let code = totp_custom::<Sha1>(
-        30,
-        6,
-        secret_bytes.as_slice(),
-        timestamp,
-    );
-    
+
+    let code = totp_custom::<Sha1>(30, 6, secret_bytes.as_slice(), timestamp);
+
     Ok(code)
 }
 
@@ -2196,10 +2639,14 @@ async fn get_cards_handler() -> Result<Json<serde_json::Value>, StatusCode> {
             return Err("Vault is locked");
         }
 
-        let cards: Vec<_> = state.entries.values()
+        let cards: Vec<_> = state
+            .entries
+            .values()
             .filter(|entry| entry.category == "bank_cards")
             .map(|entry| {
-                let mut card_data = entry.notes.as_ref()
+                let mut card_data = entry
+                    .notes
+                    .as_ref()
                     .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
                     .unwrap_or_else(|| json!({}));
 
@@ -2213,7 +2660,8 @@ async fn get_cards_handler() -> Result<Json<serde_json::Value>, StatusCode> {
 
         eprintln!("[Cards HTTP] Found {} cards", cards.len());
         Ok(cards)
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(cards)) => Ok(Json(json!({"success": true, "cards": cards}))),
@@ -2236,10 +2684,14 @@ async fn get_addresses_handler() -> Result<Json<serde_json::Value>, StatusCode> 
             return Err("Vault is locked");
         }
 
-        let addresses: Vec<_> = state.entries.values()
+        let addresses: Vec<_> = state
+            .entries
+            .values()
             .filter(|entry| entry.category == "addresses")
             .map(|entry| {
-                let mut address_data = entry.notes.as_ref()
+                let mut address_data = entry
+                    .notes
+                    .as_ref()
                     .and_then(|n| serde_json::from_str::<serde_json::Value>(n).ok())
                     .unwrap_or_else(|| json!({}));
 
@@ -2253,11 +2705,14 @@ async fn get_addresses_handler() -> Result<Json<serde_json::Value>, StatusCode> 
 
         eprintln!("[Addresses HTTP] Found {} addresses", addresses.len());
         Ok(addresses)
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(addresses)) => Ok(Json(json!({"success": true, "addresses": addresses}))),
-        Ok(Err(msg)) => Ok(Json(json!({"success": false, "error": msg, "addresses": []}))),
+        Ok(Err(msg)) => Ok(Json(
+            json!({"success": false, "error": msg, "addresses": []}),
+        )),
         Err(e) => {
             eprintln!("[Addresses HTTP] Task error: {}", e);
             Err(StatusCode::INTERNAL_SERVER_ERROR)
@@ -2278,61 +2733,93 @@ async fn check_duplicate_handler(
             return Err("Vault is locked");
         }
 
-        let category = payload.get("category").and_then(|v| v.as_str()).unwrap_or("");
+        let category = payload
+            .get("category")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
         let url = payload.get("url").and_then(|v| v.as_str()).unwrap_or("");
-        let username = payload.get("username").and_then(|v| v.as_str()).unwrap_or("");
-        let card_number = payload.get("cardNumber").and_then(|v| v.as_str()).unwrap_or("");
+        let username = payload
+            .get("username")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let card_number = payload
+            .get("cardNumber")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
 
         let url_domain = extract_domain(&url.to_lowercase());
 
         let exists = match category {
-            "accounts" => {
-                state.entries.values().any(|entry| {
-                    entry.category == "accounts" &&
-                    entry.username.to_lowercase() == username.to_lowercase() &&
-                    entry.url.as_ref().map_or(false, |entry_url| {
+            "accounts" => state.entries.values().any(|entry| {
+                entry.category == "accounts"
+                    && entry.username.to_lowercase() == username.to_lowercase()
+                    && entry.url.as_ref().map_or(false, |entry_url| {
                         let entry_domain = extract_domain(&entry_url.to_lowercase());
                         url_domain.as_ref().map_or(false, |ud| {
                             entry_domain.as_ref().map_or(false, |ed| ed == ud)
                         })
                     })
-                })
-            },
+            }),
             "bank_cards" => {
                 let clean_card = card_number.replace(" ", "").replace("-", "");
                 state.entries.values().any(|entry| {
-                    if entry.category != "bank_cards" { return false; }
+                    if entry.category != "bank_cards" {
+                        return false;
+                    }
                     entry.notes.as_ref().map_or(false, |notes| {
-                        serde_json::from_str::<serde_json::Value>(notes).ok()
-                            .and_then(|json| json.get("cardNumber").and_then(|c| c.as_str()).map(|s| s.to_string()))
+                        serde_json::from_str::<serde_json::Value>(notes)
+                            .ok()
+                            .and_then(|json| {
+                                json.get("cardNumber")
+                                    .and_then(|c| c.as_str())
+                                    .map(|s| s.to_string())
+                            })
                             .map_or(false, |stored_card| {
                                 stored_card.replace(" ", "").replace("-", "") == clean_card
                             })
                     })
                 })
-            },
+            }
             "addresses" => {
-                let street = payload.get("street").and_then(|v| v.as_str()).unwrap_or("").to_lowercase();
-                let postal = payload.get("postalCode").and_then(|v| v.as_str()).unwrap_or("");
+                let street = payload
+                    .get("street")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_lowercase();
+                let postal = payload
+                    .get("postalCode")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("");
 
                 state.entries.values().any(|entry| {
-                    if entry.category != "addresses" { return false; }
+                    if entry.category != "addresses" {
+                        return false;
+                    }
                     entry.notes.as_ref().map_or(false, |notes| {
-                        serde_json::from_str::<serde_json::Value>(notes).ok()
+                        serde_json::from_str::<serde_json::Value>(notes)
+                            .ok()
                             .map_or(false, |json| {
-                                let stored_street = json.get("street").and_then(|s| s.as_str()).unwrap_or("").to_lowercase();
-                                let stored_postal = json.get("postalCode").and_then(|s| s.as_str()).unwrap_or("");
+                                let stored_street = json
+                                    .get("street")
+                                    .and_then(|s| s.as_str())
+                                    .unwrap_or("")
+                                    .to_lowercase();
+                                let stored_postal = json
+                                    .get("postalCode")
+                                    .and_then(|s| s.as_str())
+                                    .unwrap_or("");
                                 stored_street == street && stored_postal == postal
                             })
                     })
                 })
-            },
-            _ => false
+            }
+            _ => false,
         };
 
         eprintln!("[Check Duplicate] category={}, exists={}", category, exists);
         Ok(json!({ "exists": exists }))
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok(data)) => Ok(Json(json!({"success": true, "data": data}))),
@@ -2357,12 +2844,36 @@ async fn save_entry_handler(
             return Err("Kasa kilitli".to_string());
         }
 
-        let title = payload.get("title").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
-        let category = payload.get("category").and_then(|v| v.as_str()).unwrap_or("accounts").trim().to_string();
-        let notes = payload.get("notes").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let url = payload.get("url").and_then(|v| v.as_str()).map(|s| s.to_string());
-        let username = payload.get("username").and_then(|v| v.as_str()).unwrap_or("").to_string();
-        let password = payload.get("password").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let title = payload
+            .get("title")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .trim()
+            .to_string();
+        let category = payload
+            .get("category")
+            .and_then(|v| v.as_str())
+            .unwrap_or("accounts")
+            .trim()
+            .to_string();
+        let notes = payload
+            .get("notes")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let url = payload
+            .get("url")
+            .and_then(|v| v.as_str())
+            .map(|s| s.to_string());
+        let username = payload
+            .get("username")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let password = payload
+            .get("password")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
 
         if title.is_empty() {
             return Err("Başlık gerekli".to_string());
@@ -2385,34 +2896,47 @@ async fn save_entry_handler(
             created_at: now,
             updated_at: now,
             category,
+            extra_fields: None,
         };
 
         state.entries.insert(id.clone(), entry);
 
         let pwd_string = {
-            let master_pwd = MASTER_PASSWORD.lock()
+            let master_pwd = MASTER_PASSWORD
+                .lock()
                 .map_err(|_| "Master password lock hatası".to_string())?;
-            let pwd = master_pwd.as_ref()
+            let pwd = master_pwd
+                .as_ref()
                 .ok_or_else(|| "Master password bulunamadı".to_string())?;
             pwd.as_str().to_string()
         };
 
         save_vault_to_disk(&state, &pwd_string)?;
 
-        eprintln!("[Save Entry] Saved entry {} with category {}", id, category_clone);
+        eprintln!(
+            "[Save Entry] Saved entry {} with category {}",
+            id, category_clone
+        );
         Ok((id, category_clone))
-    }).await;
+    })
+    .await;
 
     match result {
         Ok(Ok((entry_id, category))) => {
             // Emit event to frontend to refresh entries
             if let Some(app_handle) = get_app_handle() {
-                let _ = app_handle.emit("entries-updated", serde_json::json!({
-                    "action": "add",
-                    "entry_id": entry_id,
-                    "category": category
-                }));
-                eprintln!("[Save Entry] Emitted entries-updated event for category: {}", category);
+                let _ = app_handle.emit(
+                    "entries-updated",
+                    serde_json::json!({
+                        "action": "add",
+                        "entry_id": entry_id,
+                        "category": category
+                    }),
+                );
+                eprintln!(
+                    "[Save Entry] Emitted entries-updated event for category: {}",
+                    category
+                );
             }
             Ok(Json(json!({"success": true})))
         }
@@ -2445,24 +2969,26 @@ fn get_settings_path() -> Result<PathBuf, String> {
             .map_err(|_| "APPDATA environment variable bulunamadı".to_string())?
             .join("ConfPass")
     } else if cfg!(target_os = "macos") {
-        let home = env::var("HOME")
-            .map_err(|_| "HOME environment variable bulunamadı".to_string())?;
-        PathBuf::from(home).join("Library").join("Application Support").join("ConfPass")
+        let home =
+            env::var("HOME").map_err(|_| "HOME environment variable bulunamadı".to_string())?;
+        PathBuf::from(home)
+            .join("Library")
+            .join("Application Support")
+            .join("ConfPass")
     } else {
-        let home = env::var("HOME")
-            .map_err(|_| "HOME environment variable bulunamadı".to_string())?;
+        let home =
+            env::var("HOME").map_err(|_| "HOME environment variable bulunamadı".to_string())?;
         PathBuf::from(home).join(".config").join("confpass")
     };
-    
-    fs::create_dir_all(&app_data_dir)
-        .map_err(|e| format!("Directory oluşturulamadı: {}", e))?;
+
+    fs::create_dir_all(&app_data_dir).map_err(|e| format!("Directory oluşturulamadı: {}", e))?;
     Ok(app_data_dir.join("settings.json"))
 }
 
 #[tauri::command]
 fn get_settings() -> Result<AppSettings, String> {
     let settings_path = get_settings_path()?;
-    
+
     if !settings_path.exists() {
         return Ok(AppSettings {
             minimize_to_tray: false,
@@ -2472,13 +2998,13 @@ fn get_settings() -> Result<AppSettings, String> {
             stream_protection: false,
         });
     }
-    
+
     let content = fs::read_to_string(&settings_path)
         .map_err(|e| format!("Ayarlar dosyası okunamadı: {}", e))?;
-    
-    let settings: AppSettings = serde_json::from_str(&content)
-        .map_err(|e| format!("Ayarlar parse edilemedi: {}", e))?;
-    
+
+    let settings: AppSettings =
+        serde_json::from_str(&content).map_err(|e| format!("Ayarlar parse edilemedi: {}", e))?;
+
     Ok(settings)
 }
 
@@ -2486,10 +3012,9 @@ fn save_settings(settings: &AppSettings) -> Result<(), String> {
     let settings_path = get_settings_path()?;
     let json = serde_json::to_string_pretty(settings)
         .map_err(|e| format!("Ayarlar serialize edilemedi: {}", e))?;
-    
-    fs::write(&settings_path, json)
-        .map_err(|e| format!("Ayarlar kaydedilemedi: {}", e))?;
-    
+
+    fs::write(&settings_path, json).map_err(|e| format!("Ayarlar kaydedilemedi: {}", e))?;
+
     Ok(())
 }
 
@@ -2507,15 +3032,16 @@ fn set_auto_start(enabled: bool) -> Result<(), String> {
     {
         use winreg::enums::*;
         use winreg::RegKey;
-        
+
         let hkcu = RegKey::predef(HKEY_CURRENT_USER);
         let path = r"Software\Microsoft\Windows\CurrentVersion\Run";
-        let (key, _) = hkcu.create_subkey(path)
+        let (key, _) = hkcu
+            .create_subkey(path)
             .map_err(|e| format!("Registry key oluşturulamadı: {}", e))?;
-        
+
         if enabled {
-            let exe_path = std::env::current_exe()
-                .map_err(|e| format!("Exe path bulunamadı: {}", e))?;
+            let exe_path =
+                std::env::current_exe().map_err(|e| format!("Exe path bulunamadı: {}", e))?;
             let exe_path_str = exe_path.to_string_lossy().to_string();
             key.set_value("ConfPass", &exe_path_str)
                 .map_err(|e| format!("Auto-start kaydedilemedi: {}", e))?;
@@ -2523,12 +3049,12 @@ fn set_auto_start(enabled: bool) -> Result<(), String> {
             let _ = key.delete_value("ConfPass");
         }
     }
-    
+
     #[cfg(not(windows))]
     {
         return Err("Auto-start sadece Windows'ta destekleniyor".to_string());
     }
-    
+
     let mut settings = get_settings()?;
     settings.auto_start = enabled;
     save_settings(&settings)?;
@@ -2540,10 +3066,10 @@ fn set_auto_lock_timeout(timeout: u64) -> Result<(), String> {
     let mut settings = get_settings()?;
     settings.auto_lock_timeout = timeout;
     save_settings(&settings)?;
-    
+
     let mut state = get_state_mut().map_err(|e| e.to_string())?;
     state.auto_lock_timeout = if timeout > 0 { Some(timeout) } else { None };
-    
+
     Ok(())
 }
 
@@ -2552,7 +3078,7 @@ fn set_use_biometric(enabled: bool) -> Result<(), String> {
     let mut settings = get_settings()?;
     settings.use_biometric = enabled;
     save_settings(&settings)?;
-    
+
     if enabled {
         // If vault is already unlocked, save password to keyring immediately
         #[cfg(windows)]
@@ -2568,7 +3094,8 @@ fn set_use_biometric(enabled: bool) -> Result<(), String> {
         // Clear from keyring if disabled
         #[cfg(windows)]
         {
-            let entry = keyring::Entry::new("ConfPass", "master_password").map_err(|e| e.to_string())?;
+            let entry =
+                keyring::Entry::new("ConfPass", "master_password").map_err(|e| e.to_string())?;
             let _ = entry.delete_password();
         }
     }
@@ -2587,27 +3114,40 @@ static STREAMING_DETECTED: Lazy<Mutex<bool>> = Lazy::new(|| Mutex::new(false));
 // Yayın/ekran paylaşımı yapan uygulamaları algıla
 #[cfg(windows)]
 fn detect_streaming_apps() -> Vec<String> {
-    use windows::Win32::System::ProcessStatus::{EnumProcesses, GetModuleBaseNameW};
-    use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
     use windows::Win32::Foundation::CloseHandle;
+    use windows::Win32::System::ProcessStatus::{EnumProcesses, GetModuleBaseNameW};
+    use windows::Win32::System::Threading::{
+        OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ,
+    };
 
     let streaming_apps = [
-        "obs64.exe", "obs32.exe", "obs.exe",
-        "streamlabs obs.exe", "slobs.exe",
+        "obs64.exe",
+        "obs32.exe",
+        "obs.exe",
+        "streamlabs obs.exe",
+        "slobs.exe",
         "discord.exe",
-        "xsplit.exe", "xsplit.broadcaster.exe", "xsplit.gamecaster.exe",
-        "nvidia share.exe", "nvcontainer.exe",
-        "gamebar.exe", "gamebarpresencewriter.exe",
+        "xsplit.exe",
+        "xsplit.broadcaster.exe",
+        "xsplit.gamecaster.exe",
+        "nvidia share.exe",
+        "nvcontainer.exe",
+        "gamebar.exe",
+        "gamebarpresencewriter.exe",
         "zoom.exe",
-        "teams.exe", "ms-teams.exe",
+        "teams.exe",
+        "ms-teams.exe",
         "skype.exe",
         "webex.exe",
         "googlemeetpwa.exe",
         "streamelements obs live.exe",
-        "twitch studio.exe", "twitchstudio.exe",
+        "twitch studio.exe",
+        "twitchstudio.exe",
         "wirecast.exe",
-        "vmix64.exe", "vmix.exe",
-        "screenpal.exe", "screencastify.exe",
+        "vmix64.exe",
+        "vmix.exe",
+        "screenpal.exe",
+        "screencastify.exe",
         "loom.exe",
         "bandicam.exe",
         "camtasia.exe",
@@ -2626,7 +3166,9 @@ fn detect_streaming_apps() -> Vec<String> {
             processes.as_mut_ptr(),
             (processes.len() * std::mem::size_of::<u32>()) as u32,
             &mut bytes_returned,
-        ).is_ok() {
+        )
+        .is_ok()
+        {
             let num_processes = bytes_returned as usize / std::mem::size_of::<u32>();
 
             for &pid in &processes[..num_processes] {
@@ -2634,17 +3176,16 @@ fn detect_streaming_apps() -> Vec<String> {
                     continue;
                 }
 
-                if let Ok(handle) = OpenProcess(
-                    PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-                    false,
-                    pid,
-                ) {
+                if let Ok(handle) =
+                    OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)
+                {
                     let mut name_buf: [u16; 260] = [0; 260];
                     let len = GetModuleBaseNameW(handle, None, &mut name_buf);
                     let _ = CloseHandle(handle);
 
                     if len > 0 {
-                        let name = String::from_utf16_lossy(&name_buf[..len as usize]).to_lowercase();
+                        let name =
+                            String::from_utf16_lossy(&name_buf[..len as usize]).to_lowercase();
 
                         for app in &streaming_apps {
                             if name == *app || name.contains(&app.replace(".exe", "")) {
@@ -2671,8 +3212,10 @@ fn detect_streaming_apps() -> Vec<String> {
 // Pencereyi ekran yakalamasından gizle (SetWindowDisplayAffinity)
 #[cfg(windows)]
 fn set_window_capture_protection(hwnd: isize, protect: bool) -> Result<(), String> {
-    use windows::Win32::UI::WindowsAndMessaging::{SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE};
     use windows::Win32::Foundation::HWND;
+    use windows::Win32::UI::WindowsAndMessaging::{
+        SetWindowDisplayAffinity, WDA_EXCLUDEFROMCAPTURE, WDA_NONE,
+    };
 
     let affinity = if protect {
         WDA_EXCLUDEFROMCAPTURE
@@ -2737,9 +3280,7 @@ fn get_stream_protection_status() -> Result<serde_json::Value, String> {
     let streaming_apps = detect_streaming_apps();
 
     let is_streaming = !streaming_apps.is_empty();
-    let is_protected = STREAMING_DETECTED.lock()
-        .map(|d| *d)
-        .unwrap_or(false);
+    let is_protected = STREAMING_DETECTED.lock().map(|d| *d).unwrap_or(false);
 
     Ok(serde_json::json!({
         "enabled": settings.stream_protection,
@@ -2757,8 +3298,8 @@ fn check_streaming_apps() -> Result<Vec<String>, String> {
 // Stream monitoring thread'i başlat
 fn start_stream_monitor(app_handle: tauri::AppHandle) {
     std::thread::spawn(move || {
-        use tauri::Manager;
         use tauri::Emitter;
+        use tauri::Manager;
 
         let mut last_streaming_state = false;
 
@@ -2766,9 +3307,7 @@ fn start_stream_monitor(app_handle: tauri::AppHandle) {
             std::thread::sleep(std::time::Duration::from_secs(2));
 
             // Check if stream protection is enabled
-            let protection_enabled = STREAM_PROTECTION_ACTIVE.lock()
-                .map(|a| *a)
-                .unwrap_or(false);
+            let protection_enabled = STREAM_PROTECTION_ACTIVE.lock().map(|a| *a).unwrap_or(false);
 
             if !protection_enabled {
                 // If protection was active but now disabled, remove protection
@@ -2808,13 +3347,17 @@ fn start_stream_monitor(app_handle: tauri::AppHandle) {
                     }
 
                     // Emit event to frontend
-                    let _ = window.emit("stream-protection-changed", serde_json::json!({
-                        "streaming_detected": is_streaming,
-                        "protected": is_streaming,
-                        "detected_apps": streaming_apps
-                    }));
+                    let _ = window.emit(
+                        "stream-protection-changed",
+                        serde_json::json!({
+                            "streaming_detected": is_streaming,
+                            "protected": is_streaming,
+                            "detected_apps": streaming_apps
+                        }),
+                    );
 
-                    eprintln!("[Stream Protection] Streaming {} - Apps: {:?}",
+                    eprintln!(
+                        "[Stream Protection] Streaming {} - Apps: {:?}",
                         if is_streaming { "detected" } else { "stopped" },
                         streaming_apps
                     );
@@ -2827,48 +3370,51 @@ fn start_stream_monitor(app_handle: tauri::AppHandle) {
 #[tauri::command]
 fn generate_totp_code(secret: String) -> Result<String, String> {
     use totp_lite::{totp_custom, Sha1};
-    
+
     let cleaned_secret = secret.replace(" ", "").replace("-", "").to_uppercase();
-    
-    let secret_bytes = match base32::decode(base32::Alphabet::RFC4648 { padding: false }, &cleaned_secret) {
+
+    let secret_bytes = match base32::decode(
+        base32::Alphabet::RFC4648 { padding: false },
+        &cleaned_secret,
+    ) {
         Some(bytes) if !bytes.is_empty() => bytes,
-        _ => {
-            match base64::engine::general_purpose::STANDARD.decode(&secret) {
-                Ok(bytes) if !bytes.is_empty() => bytes,
-                _ => return Err("Geçersiz TOTP secret formatı".to_string()),
-            }
-        }
+        _ => match base64::engine::general_purpose::STANDARD.decode(&secret) {
+            Ok(bytes) if !bytes.is_empty() => bytes,
+            _ => return Err("Geçersiz TOTP secret formatı".to_string()),
+        },
     };
-    
+
     let timestamp = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map_err(|e| format!("Zaman hatası: {}", e))?
         .as_secs();
-    
-    let code = totp_custom::<Sha1>(
-        30,
-        6,
-        secret_bytes.as_slice(),
-        timestamp,
-    );
-    
+
+    let code = totp_custom::<Sha1>(30, 6, secret_bytes.as_slice(), timestamp);
+
     Ok(code)
 }
 
 #[tauri::command]
-fn generate_totp_qr_code(secret: String, issuer: String, account: String) -> Result<String, String> {
+fn generate_totp_qr_code(
+    secret: String,
+    issuer: String,
+    account: String,
+) -> Result<String, String> {
     use qrcode::QrCode;
-    
-    let otp_url = format!("otpauth://totp/{}:{}?secret={}&issuer={}&algorithm=SHA1&digits=6&period=30",
-        issuer, account, secret, issuer);
-    
-    let qr = QrCode::new(otp_url.as_bytes())
-        .map_err(|e| format!("QR kod oluşturulamadı: {}", e))?;
-    
-    let image = qr.render::<image::Rgb<u8>>()
+
+    let otp_url = format!(
+        "otpauth://totp/{}:{}?secret={}&issuer={}&algorithm=SHA1&digits=6&period=30",
+        issuer, account, secret, issuer
+    );
+
+    let qr =
+        QrCode::new(otp_url.as_bytes()).map_err(|e| format!("QR kod oluşturulamadı: {}", e))?;
+
+    let image = qr
+        .render::<image::Rgb<u8>>()
         .max_dimensions(200, 200)
         .build();
-    
+
     let mut buffer = Vec::new();
     {
         use image::ImageEncoder;
@@ -2876,35 +3422,31 @@ fn generate_totp_qr_code(secret: String, issuer: String, account: String) -> Res
         let width = image.width();
         let height = image.height();
         let raw = image.into_raw();
-        encoder.write_image(
-            &raw,
-            width,
-            height,
-            image::ExtendedColorType::Rgb8,
-        ).map_err(|e| format!("PNG encode hatası: {}", e))?;
+        encoder
+            .write_image(&raw, width, height, image::ExtendedColorType::Rgb8)
+            .map_err(|e| format!("PNG encode hatası: {}", e))?;
     }
-    
+
     Ok(base64::engine::general_purpose::STANDARD.encode(&buffer))
 }
 
 #[tauri::command]
 fn reset_vault() -> Result<(), String> {
     let vault_path = get_vault_path()?;
-    let vault_dir = vault_path.parent()
+    let vault_dir = vault_path
+        .parent()
         .ok_or_else(|| "Vault path parent bulunamadı".to_string())?;
-    
+
     let salt_path = vault_dir.join("vault.salt");
-    
+
     if vault_path.exists() {
-        fs::remove_file(&vault_path)
-            .map_err(|e| format!("Vault dosyası silinemedi: {}", e))?;
+        fs::remove_file(&vault_path).map_err(|e| format!("Vault dosyası silinemedi: {}", e))?;
     }
-    
+
     if salt_path.exists() {
-        fs::remove_file(&salt_path)
-            .map_err(|e| format!("Salt dosyası silinemedi: {}", e))?;
+        fs::remove_file(&salt_path).map_err(|e| format!("Salt dosyası silinemedi: {}", e))?;
     }
-    
+
     let mut state = get_state_mut().map_err(|e| e.to_string())?;
     state.entries.clear();
     state.master_password_hash = None;
@@ -2912,12 +3454,12 @@ fn reset_vault() -> Result<(), String> {
     state.vault_locked = true;
     state.failed_attempts = 0;
     state.last_attempt_time = None;
-    
+
     {
         let mut master_pwd = MASTER_PASSWORD.lock().unwrap();
         *master_pwd = None;
     }
-    
+
     Ok(())
 }
 
@@ -2940,7 +3482,8 @@ fn reset_vault_with_password(mut master_password: String) -> Result<(), String> 
         Ok(state) => state,
         Err(e) => {
             master_password.zeroize();
-            if e.contains("Decrypt hatası") || e.contains("decrypt") || e.contains("Şifre çözme") {
+            if e.contains("Decrypt hatası") || e.contains("decrypt") || e.contains("Şifre çözme")
+            {
                 return Err("Yanlış ana şifre".to_string());
             }
             return Err(format!("Vault doğrulanamadı: {}", e));
@@ -2948,18 +3491,20 @@ fn reset_vault_with_password(mut master_password: String) -> Result<(), String> 
     };
 
     // Verify password hash
-    let stored_hash = loaded_state.master_password_hash.as_ref()
-        .ok_or_else(|| {
-            master_password.zeroize();
-            "Hash bulunamadı".to_string()
-        })?;
+    let stored_hash = loaded_state.master_password_hash.as_ref().ok_or_else(|| {
+        master_password.zeroize();
+        "Hash bulunamadı".to_string()
+    })?;
 
     let parsed_hash = PasswordHash::new(stored_hash).map_err(|e| {
         master_password.zeroize();
         format!("Hash parse hatası: {}", e)
     })?;
 
-    if Argon2::default().verify_password(master_password.as_bytes(), &parsed_hash).is_err() {
+    if Argon2::default()
+        .verify_password(master_password.as_bytes(), &parsed_hash)
+        .is_err()
+    {
         master_password.zeroize();
         return Err("Yanlış ana şifre".to_string());
     }
@@ -2967,7 +3512,8 @@ fn reset_vault_with_password(mut master_password: String) -> Result<(), String> 
     master_password.zeroize();
 
     // Password verified, now reset everything
-    let vault_dir = vault_path.parent()
+    let vault_dir = vault_path
+        .parent()
         .ok_or_else(|| "Vault path parent bulunamadı".to_string())?;
 
     let salt_path = vault_dir.join("vault.salt");
@@ -2976,13 +3522,11 @@ fn reset_vault_with_password(mut master_password: String) -> Result<(), String> 
 
     // Delete all vault files
     if vault_path.exists() {
-        fs::remove_file(&vault_path)
-            .map_err(|e| format!("Vault dosyası silinemedi: {}", e))?;
+        fs::remove_file(&vault_path).map_err(|e| format!("Vault dosyası silinemedi: {}", e))?;
     }
 
     if salt_path.exists() {
-        fs::remove_file(&salt_path)
-            .map_err(|e| format!("Salt dosyası silinemedi: {}", e))?;
+        fs::remove_file(&salt_path).map_err(|e| format!("Salt dosyası silinemedi: {}", e))?;
     }
 
     if activity_log_path.exists() {
@@ -3012,18 +3556,19 @@ fn reset_vault_with_password(mut master_password: String) -> Result<(), String> 
 
 #[tauri::command]
 async fn check_password_breach(password: String) -> Result<serde_json::Value, String> {
-    use sha1::{Sha1, Digest};
-    
+    use sha1::{Digest, Sha1};
+
     let mut hasher = Sha1::new();
     hasher.update(password.as_bytes());
     let hash = hasher.finalize();
     let hash_hex = format!("{:x}", hash);
     let prefix = &hash_hex[..5];
     let suffix = &hash_hex[5..].to_uppercase();
-    
+
     let url = format!("https://api.pwnedpasswords.com/range/{}", prefix);
     let client = reqwest::Client::new();
-    let response = client.get(&url)
+    let response = client
+        .get(&url)
         .header("User-Agent", "ConfPass-PasswordManager")
         .header("Add-Padding", "true")
         .send()
@@ -3034,14 +3579,14 @@ async fn check_password_breach(password: String) -> Result<serde_json::Value, St
     if !response.status().is_success() {
         return Err(format!("API hatası: {}", response.status()));
     }
-    
-    let text = response.text()
+
+    let text = response
+        .text()
         .await
         .map_err(|e| format!("Yanıt okunamadı: {}", e))?;
-    
-    let breached = text.lines()
-        .any(|line| line.starts_with(suffix));
-    
+
+    let breached = text.lines().any(|line| line.starts_with(suffix));
+
     let count = if breached {
         text.lines()
             .find(|line| line.starts_with(suffix))
@@ -3051,11 +3596,34 @@ async fn check_password_breach(password: String) -> Result<serde_json::Value, St
     } else {
         0
     };
-    
+
     Ok(serde_json::json!({
         "breached": breached,
         "count": count
     }))
+}
+
+async fn get_password_entry_handler(
+    Json(payload): Json<serde_json::Value>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    let id = payload
+        .get("id")
+        .and_then(|v| v.as_str())
+        .ok_or((StatusCode::BAD_REQUEST, "ID gerekli".to_string()))?;
+
+    let state = get_state().map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+
+    if state.vault_locked {
+        return Err((StatusCode::FORBIDDEN, "Kasa kilitli".to_string()));
+    }
+
+    if let Some(entry) = state.entries.get(id) {
+        Ok(Json(serde_json::to_value(entry).map_err(|e| {
+            (StatusCode::INTERNAL_SERVER_ERROR, e.to_string())
+        })?))
+    } else {
+        Err((StatusCode::NOT_FOUND, "Kayıt bulunamadı".to_string()))
+    }
 }
 
 #[tauri::command]
@@ -3064,7 +3632,8 @@ async fn check_email_breach(email: String) -> Result<serde_json::Value, String> 
     let url = format!("https://api.xposedornot.com/v1/check-email/{}", email);
 
     let client = reqwest::Client::new();
-    let response = client.get(&url)
+    let response = client
+        .get(&url)
         .header("User-Agent", "ConfPass-PasswordManager")
         .send()
         .await
@@ -3085,17 +3654,21 @@ async fn check_email_breach(email: String) -> Result<serde_json::Value, String> 
         return Err(format!("API hatası: {}", status));
     }
 
-    let data: serde_json::Value = response.json()
+    let data: serde_json::Value = response
+        .json()
         .await
         .map_err(|e| format!("JSON parse hatası: {}", e))?;
 
     // XposedOrNot returns breaches array
-    let breaches = data.get("breaches")
+    let breaches = data
+        .get("breaches")
         .and_then(|b| b.as_array())
-        .map(|arr| arr.iter()
-            .filter_map(|v| v.as_str())
-            .map(|s| s.to_string())
-            .collect::<Vec<String>>())
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|v| v.as_str())
+                .map(|s| s.to_string())
+                .collect::<Vec<String>>()
+        })
         .unwrap_or_default();
 
     let count = breaches.len();
@@ -3110,41 +3683,40 @@ async fn check_email_breach(email: String) -> Result<serde_json::Value, String> 
 #[tauri::command]
 fn add_password_history(entry_id: String, old_password: String) -> Result<(), String> {
     let state = get_state().map_err(|e| e.to_string())?;
-    
+
     if !state.entries.contains_key(&entry_id) {
         return Err("Entry bulunamadı".to_string());
     }
-    
+
     let history_path = get_vault_path()?
         .parent()
         .ok_or_else(|| "Vault path parent bulunamadı".to_string())?
         .join("history.json");
-    
-    let mut history: std::collections::HashMap<String, Vec<serde_json::Value>> = if history_path.exists() {
-        let content = fs::read_to_string(&history_path)
-            .map_err(|e| format!("History okunamadı: {}", e))?;
-        serde_json::from_str(&content)
-            .unwrap_or_default()
-    } else {
-        std::collections::HashMap::new()
-    };
-    
+
+    let mut history: std::collections::HashMap<String, Vec<serde_json::Value>> =
+        if history_path.exists() {
+            let content = fs::read_to_string(&history_path)
+                .map_err(|e| format!("History okunamadı: {}", e))?;
+            serde_json::from_str(&content).unwrap_or_default()
+        } else {
+            std::collections::HashMap::new()
+        };
+
     let entry_history = history.entry(entry_id).or_insert_with(Vec::new);
     entry_history.push(serde_json::json!({
         "password": old_password,
         "changed_at": chrono::Utc::now().timestamp()
     }));
-    
+
     if entry_history.len() > 10 {
         entry_history.remove(0);
     }
-    
+
     let json = serde_json::to_string_pretty(&history)
         .map_err(|e| format!("History serialize edilemedi: {}", e))?;
-    
-    fs::write(&history_path, json)
-        .map_err(|e| format!("History kaydedilemedi: {}", e))?;
-    
+
+    fs::write(&history_path, json).map_err(|e| format!("History kaydedilemedi: {}", e))?;
+
     Ok(())
 }
 
@@ -3154,36 +3726,39 @@ fn get_password_history(entry_id: String) -> Result<Vec<serde_json::Value>, Stri
         .parent()
         .ok_or_else(|| "Vault path parent bulunamadı".to_string())?
         .join("history.json");
-    
+
     if !history_path.exists() {
         return Ok(Vec::new());
     }
-    
-    let content = fs::read_to_string(&history_path)
-        .map_err(|e| format!("History okunamadı: {}", e))?;
-    
-    let history: std::collections::HashMap<String, Vec<serde_json::Value>> = serde_json::from_str(&content)
-        .map_err(|e| format!("History parse edilemedi: {}", e))?;
-    
+
+    let content =
+        fs::read_to_string(&history_path).map_err(|e| format!("History okunamadı: {}", e))?;
+
+    let history: std::collections::HashMap<String, Vec<serde_json::Value>> =
+        serde_json::from_str(&content).map_err(|e| format!("History parse edilemedi: {}", e))?;
+
     Ok(history.get(&entry_id).cloned().unwrap_or_default())
 }
 
 #[tauri::command]
-fn log_activity(action: String, entry_id: Option<String>, details: Option<String>) -> Result<(), String> {
+fn log_activity(
+    action: String,
+    entry_id: Option<String>,
+    details: Option<String>,
+) -> Result<(), String> {
     let activity_path = get_vault_path()?
         .parent()
         .ok_or_else(|| "Vault path parent bulunamadı".to_string())?
         .join("activity.json");
-    
+
     let mut activities: Vec<serde_json::Value> = if activity_path.exists() {
-        let content = fs::read_to_string(&activity_path)
-            .map_err(|e| format!("Activity okunamadı: {}", e))?;
-        serde_json::from_str(&content)
-            .unwrap_or_default()
+        let content =
+            fs::read_to_string(&activity_path).map_err(|e| format!("Activity okunamadı: {}", e))?;
+        serde_json::from_str(&content).unwrap_or_default()
     } else {
         Vec::new()
     };
-    
+
     activities.push(serde_json::json!({
         "id": uuid::Uuid::new_v4().to_string(),
         "entry_id": entry_id,
@@ -3191,17 +3766,16 @@ fn log_activity(action: String, entry_id: Option<String>, details: Option<String
         "timestamp": chrono::Utc::now().timestamp(),
         "details": details
     }));
-    
+
     if activities.len() > 1000 {
         activities.remove(0);
     }
-    
+
     let json = serde_json::to_string_pretty(&activities)
         .map_err(|e| format!("Activity serialize edilemedi: {}", e))?;
-    
-    fs::write(&activity_path, json)
-        .map_err(|e| format!("Activity kaydedilemedi: {}", e))?;
-    
+
+    fs::write(&activity_path, json).map_err(|e| format!("Activity kaydedilemedi: {}", e))?;
+
     Ok(())
 }
 
@@ -3211,23 +3785,23 @@ fn get_activity_log(limit: Option<usize>) -> Result<Vec<serde_json::Value>, Stri
         .parent()
         .ok_or_else(|| "Vault path parent bulunamadı".to_string())?
         .join("activity.json");
-    
+
     if !activity_path.exists() {
         return Ok(Vec::new());
     }
-    
-    let content = fs::read_to_string(&activity_path)
-        .map_err(|e| format!("Activity okunamadı: {}", e))?;
-    
-    let mut activities: Vec<serde_json::Value> = serde_json::from_str(&content)
-        .map_err(|e| format!("Activity parse edilemedi: {}", e))?;
-    
+
+    let content =
+        fs::read_to_string(&activity_path).map_err(|e| format!("Activity okunamadı: {}", e))?;
+
+    let mut activities: Vec<serde_json::Value> =
+        serde_json::from_str(&content).map_err(|e| format!("Activity parse edilemedi: {}", e))?;
+
     activities.reverse();
-    
+
     if let Some(limit) = limit {
         activities.truncate(limit);
     }
-    
+
     Ok(activities)
 }
 
@@ -3235,7 +3809,9 @@ fn get_activity_log(limit: Option<usize>) -> Result<Vec<serde_json::Value>, Stri
 async fn check_biometric_available() -> Result<bool, String> {
     #[cfg(windows)]
     {
-        use windows::Security::Credentials::UI::{UserConsentVerifier, UserConsentVerifierAvailability};
+        use windows::Security::Credentials::UI::{
+            UserConsentVerifier, UserConsentVerifierAvailability,
+        };
         match UserConsentVerifier::CheckAvailabilityAsync() {
             Ok(op) => match op.get() {
                 Ok(result) => Ok(result == UserConsentVerifierAvailability::Available),
@@ -3254,8 +3830,10 @@ async fn check_biometric_available() -> Result<bool, String> {
 async fn biometric_authenticate(reason: String, window: tauri::Window) -> Result<bool, String> {
     #[cfg(windows)]
     {
-        use windows::Security::Credentials::UI::{UserConsentVerifier, UserConsentVerificationResult};
         use windows::core::HSTRING;
+        use windows::Security::Credentials::UI::{
+            UserConsentVerificationResult, UserConsentVerifier,
+        };
 
         // Minimize the window so Windows Hello appears in front
         let was_visible = window.is_visible().unwrap_or(true);
@@ -3295,19 +3873,24 @@ async fn unlock_vault_biometric(window: tauri::Window) -> Result<bool, String> {
         return Err("Biyometrik giriş devre dışı".to_string());
     }
 
-    let authenticated = biometric_authenticate("Kasa kilidini açmak için kimlik doğrulaması gerekiyor".to_string(), window).await?;
+    let authenticated = biometric_authenticate(
+        "Kasa kilidini açmak için kimlik doğrulaması gerekiyor".to_string(),
+        window,
+    )
+    .await?;
     if !authenticated {
         return Err("Kimlik doğrulama başarısız".to_string());
     }
 
     #[cfg(windows)]
     {
-        let entry = keyring::Entry::new("ConfPass", "master_password").map_err(|e| format!("Anahtar deposu hatası: {}", e))?;
+        let entry = keyring::Entry::new("ConfPass", "master_password")
+            .map_err(|e| format!("Anahtar deposu hatası: {}", e))?;
         let password = entry.get_password().map_err(|e| {
             eprintln!("[Keyring Error] Şifre okunamadı: {}", e);
             format!("Kayıtlı ana şifre bulunamadı (Hata: {}). Lütfen bir kez şifrenizle manuel giriş yapın.", e)
         })?;
-        
+
         unlock_vault(password)
     }
     #[cfg(not(windows))]
@@ -3316,21 +3899,159 @@ async fn unlock_vault_biometric(window: tauri::Window) -> Result<bool, String> {
     }
 }
 
+// ========== Auto-Type Implementation ==========
+fn perform_auto_type() {
+    log_to_file("Auto-Type Triggered!");
+
+    // 1. Get Active Window Title
+    let active_window = match get_active_window() {
+        Ok(win) => win,
+        Err(()) => {
+            log_to_file("Auto-Type: Could not get active window");
+            return;
+        }
+    };
+
+    let window_title = active_window.title.to_lowercase();
+    log_to_file(&format!("Active Window: {}", window_title));
+
+    // 2. Search in Vault
+    let state_guard = match get_state() {
+        Ok(s) => s,
+        Err(e) => {
+            log_to_file(&format!("Auto-Type Error: {}", e));
+            return;
+        }
+    };
+
+    if state_guard.vault_locked {
+        log_to_file("Auto-Type: Vault is locked!");
+        // TODO: Maybe show a notification?
+        return;
+    }
+
+    // Heuristic Search
+    let matched_entry = state_guard.entries.values().find(|entry| {
+        // A. Match Title
+        if window_title.contains(&entry.title.to_lowercase()) {
+            return true;
+        }
+        // B. Match URL/Domain
+        if let Some(url) = &entry.url {
+            if let Some(domain) = extract_domain(&url.to_lowercase()) {
+                // Remove TLD for better matching (e.g. "instagram" from "instagram.com")
+                let domain_parts: Vec<&str> = domain.split('.').collect();
+                if let Some(main_part) = domain_parts.get(domain_parts.len().saturating_sub(2)) {
+                    if window_title.contains(main_part) {
+                        return true;
+                    }
+                }
+            }
+        }
+        false
+    });
+
+    if let Some(entry) = matched_entry {
+        log_to_file(&format!("Auto-Type: Match Found -> {}", entry.title));
+
+        let username = entry.username.clone();
+        let password = entry.password.clone();
+
+        // release lock before typing to avoid deadlocks (though we perform read only here)
+        drop(state_guard);
+
+        // 3. Simulate Typing
+        // Small delay to ensure focus is correct
+        thread::sleep(Duration::from_millis(100));
+
+        // Enigo initialization
+        match Enigo::new(&Settings::default()) {
+            Ok(mut enigo) => {
+                // Type Username
+                let _ = enigo.text(&username);
+
+                // Tab
+                let _ = enigo.key(Key::Tab, enigo::Direction::Click);
+                thread::sleep(Duration::from_millis(50));
+
+                // Type Password
+                let _ = enigo.text(&password);
+
+                // Enter
+                thread::sleep(Duration::from_millis(50));
+                let _ = enigo.key(Key::Return, enigo::Direction::Click);
+
+                log_to_file("Auto-Type: Typing Complete");
+            }
+            Err(e) => {
+                log_to_file(&format!("Auto-Type: Failed to initialize Enigo: {:?}", e));
+            }
+        }
+    } else {
+        log_to_file("Auto-Type: No match found for this window");
+    }
+}
+
+fn start_global_shortcut_listener() {
+    thread::spawn(|| {
+        use rdev::{listen, EventType, Key};
+        use std::sync::atomic::{AtomicBool, Ordering};
+
+        static CTRL_PRESSED: AtomicBool = AtomicBool::new(false);
+        static SHIFT_PRESSED: AtomicBool = AtomicBool::new(false);
+
+        log_to_file("Global Shortcut Listener Started (Ctrl+Shift+A)");
+
+        if let Err(error) = listen(move |event| {
+            match event.event_type {
+                EventType::KeyPress(Key::ControlLeft) | EventType::KeyPress(Key::ControlRight) => {
+                    CTRL_PRESSED.store(true, Ordering::SeqCst);
+                }
+                EventType::KeyRelease(Key::ControlLeft)
+                | EventType::KeyRelease(Key::ControlRight) => {
+                    CTRL_PRESSED.store(false, Ordering::SeqCst);
+                }
+                EventType::KeyPress(Key::ShiftLeft) | EventType::KeyPress(Key::ShiftRight) => {
+                    SHIFT_PRESSED.store(true, Ordering::SeqCst);
+                }
+                EventType::KeyRelease(Key::ShiftLeft) | EventType::KeyRelease(Key::ShiftRight) => {
+                    SHIFT_PRESSED.store(false, Ordering::SeqCst);
+                }
+                EventType::KeyPress(Key::KeyA) => {
+                    if CTRL_PRESSED.load(Ordering::SeqCst) && SHIFT_PRESSED.load(Ordering::SeqCst) {
+                        // Trigger Auto-Type
+                        perform_auto_type();
+                    }
+                }
+                _ => {}
+            }
+        }) {
+            log_to_file(&format!("Global Listener Error: {:?}", error));
+        }
+    });
+}
+// ========== End Auto-Type Implementation ==========
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    start_global_shortcut_listener();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(tauri_plugin_stronghold::Builder::new(|password| {
-            use argon2::password_hash::{PasswordHasher, SaltString};
-            use argon2::Argon2;
-            use rand::rngs::OsRng;
-            
-            let salt = SaltString::generate(&mut OsRng);
-            let argon2 = Argon2::default();
-            argon2.hash_password(password.as_bytes(), &salt)
-                .map(|hash| hash.to_string().into_bytes())
-                .unwrap_or_default()
-        }).build())
+        .plugin(
+            tauri_plugin_stronghold::Builder::new(|password| {
+                use argon2::password_hash::{PasswordHasher, SaltString};
+                use argon2::Argon2;
+                use rand::rngs::OsRng;
+
+                let salt = SaltString::generate(&mut OsRng);
+                let argon2 = Argon2::default();
+                argon2
+                    .hash_password(password.as_bytes(), &salt)
+                    .map(|hash| hash.to_string().into_bytes())
+                    .unwrap_or_default()
+            })
+            .build(),
+        )
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             unlock_vault,
@@ -3383,7 +4104,7 @@ pub fn run() {
                     use_biometric: false,
                     stream_protection: false,
                 });
-                
+
                 if settings.minimize_to_tray {
                     api.prevent_close();
                     if let Err(e) = window.hide() {
@@ -3393,8 +4114,8 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            use tauri::tray::{TrayIconBuilder, TrayIconEvent};
             use tauri::menu::{MenuBuilder, MenuItemBuilder};
+            use tauri::tray::{TrayIconBuilder, TrayIconEvent};
 
             let app_handle = app.handle().clone();
 
@@ -3404,20 +4125,17 @@ pub fn run() {
 
             let app_handle_for_tray = app.handle().clone();
             let app_handle_for_menu = app.handle().clone();
-            
-            let show_item = MenuItemBuilder::with_id("show", "Göster")
-                .build(&app_handle)?;
-            let hide_item = MenuItemBuilder::with_id("hide", "Gizle")
-                .build(&app_handle)?;
-            let quit_item = MenuItemBuilder::with_id("quit", "Çıkış")
-                .build(&app_handle)?;
-            
+
+            let show_item = MenuItemBuilder::with_id("show", "Göster").build(&app_handle)?;
+            let hide_item = MenuItemBuilder::with_id("hide", "Gizle").build(&app_handle)?;
+            let quit_item = MenuItemBuilder::with_id("quit", "Çıkış").build(&app_handle)?;
+
             let menu = MenuBuilder::new(&app_handle)
                 .items(&[&show_item, &hide_item, &quit_item])
                 .build()?;
-            
+
             let icon = app.default_window_icon().unwrap().clone();
-            
+
             let _tray = TrayIconBuilder::new()
                 .icon(icon)
                 .tooltip("ConfPass - Password Manager")
@@ -3426,9 +4144,16 @@ pub fn run() {
                 .on_tray_icon_event(move |_tray_handle, event| {
                     use tauri::Manager;
                     let app = app_handle_for_tray.clone();
-                    
-                    if let TrayIconEvent::Click { button, button_state, .. } = event {
-                        if button == tauri::tray::MouseButton::Left && button_state == tauri::tray::MouseButtonState::Up {
+
+                    if let TrayIconEvent::Click {
+                        button,
+                        button_state,
+                        ..
+                    } = event
+                    {
+                        if button == tauri::tray::MouseButton::Left
+                            && button_state == tauri::tray::MouseButtonState::Up
+                        {
                             if let Some(win) = app.get_webview_window("main") {
                                 if let Ok(is_visible) = win.is_visible() {
                                     if is_visible {
@@ -3445,7 +4170,7 @@ pub fn run() {
                 .on_menu_event(move |_tray_handle, event| {
                     use tauri::Manager;
                     let app = app_handle_for_menu.clone();
-                    
+
                     match event.id.as_ref() {
                         "show" => {
                             if let Some(win) = app.get_webview_window("main") {
@@ -3465,10 +4190,15 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
-            
+
             std::thread::spawn(move || {
                 if let Ok(rt) = tokio::runtime::Runtime::new() {
-                    rt.block_on(start_http_server());
+                    rt.block_on(async {
+                        if let Err(e) = generate_and_save_auth_token().await {
+                            eprintln!("Failed to generate auth token: {}", e);
+                        }
+                        start_http_server().await
+                    });
                 } else {
                     eprintln!("Failed to create tokio runtime for HTTP server");
                 }

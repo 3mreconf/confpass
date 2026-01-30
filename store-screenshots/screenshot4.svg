@@ -1,0 +1,111 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800">
+  <defs>
+    <linearGradient id="bg4" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a0c"/>
+      <stop offset="100%" style="stop-color:#1a1a1f"/>
+    </linearGradient>
+    <filter id="shadow4">
+      <feDropShadow dx="0" dy="10" stdDeviation="20" flood-color="#000" flood-opacity="0.5"/>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="800" fill="url(#bg4)"/>
+
+  <!-- Title -->
+  <text x="640" y="70" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="bold" fill="#fafafa">Masaüstü Uygulaması ile Senkron</text>
+  <text x="640" y="110" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="22" fill="#a1a1aa">Tüm cihazlarınızda güvenli erişim</text>
+
+  <!-- Desktop app mockup -->
+  <g transform="translate(100, 160)">
+    <rect x="0" y="0" width="500" height="520" rx="12" fill="#1f1f24" filter="url(#shadow4)"/>
+
+    <!-- Titlebar -->
+    <rect x="0" y="0" width="500" height="40" rx="12" fill="#2a2a30"/>
+    <rect x="0" y="25" width="500" height="15" fill="#2a2a30"/>
+    <circle cx="20" cy="20" r="6" fill="#ff5f57"/>
+    <circle cx="40" cy="20" r="6" fill="#febc2e"/>
+    <circle cx="60" cy="20" r="6" fill="#28c840"/>
+    <text x="250" y="26" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#a1a1aa">ConfPass - Password Manager</text>
+
+    <!-- Sidebar -->
+    <rect x="0" y="40" width="140" height="480" fill="#18181c"/>
+    <text x="20" y="80" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="bold" fill="#f59e0b">ConfPass</text>
+
+    <rect x="10" y="110" width="120" height="36" rx="8" fill="#f59e0b" opacity="0.2"/>
+    <text x="20" y="133" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#f59e0b">🏠 Ana Sayfa</text>
+
+    <text x="20" y="175" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#a1a1aa">🔐 Hesaplar</text>
+    <text x="20" y="210" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#a1a1aa">💳 Kartlar</text>
+    <text x="20" y="245" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#a1a1aa">📝 Notlar</text>
+    <text x="20" y="280" font-family="Segoe UI, Arial, sans-serif" font-size="13" fill="#a1a1aa">🔑 Passkeys</text>
+
+    <!-- Content area -->
+    <text x="170" y="80" font-family="Segoe UI, Arial, sans-serif" font-size="18" font-weight="bold" fill="#fafafa">Şifrelerim</text>
+
+    <!-- Password entries -->
+    <rect x="160" y="100" width="320" height="70" rx="8" fill="#2a2a30"/>
+    <circle cx="195" cy="135" r="20" fill="#4285f4"/>
+    <text x="191" y="141" font-size="16" fill="#fff">G</text>
+    <text x="230" y="125" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#fafafa">Google</text>
+    <text x="230" y="145" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#a1a1aa">kullanici@gmail.com</text>
+
+    <rect x="160" y="180" width="320" height="70" rx="8" fill="#2a2a30"/>
+    <circle cx="195" cy="215" r="20" fill="#1877f2"/>
+    <text x="191" y="221" font-size="16" fill="#fff">f</text>
+    <text x="230" y="205" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#fafafa">Facebook</text>
+    <text x="230" y="225" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#a1a1aa">kullanici@email.com</text>
+
+    <rect x="160" y="260" width="320" height="70" rx="8" fill="#2a2a30"/>
+    <circle cx="195" cy="295" r="20" fill="#ff4500"/>
+    <text x="191" y="301" font-size="16" fill="#fff">R</text>
+    <text x="230" y="285" font-family="Segoe UI, Arial, sans-serif" font-size="14" font-weight="600" fill="#fafafa">Reddit</text>
+    <text x="230" y="305" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#a1a1aa">reddit_user</text>
+  </g>
+
+  <!-- Connection arrows -->
+  <g transform="translate(620, 350)">
+    <path d="M0 0 L80 0" stroke="#f59e0b" stroke-width="3" stroke-dasharray="8,4"/>
+    <circle cx="40" cy="0" r="25" fill="#1f1f24" stroke="#f59e0b" stroke-width="2"/>
+    <text x="40" y="7" text-anchor="middle" font-size="20">🔄</text>
+  </g>
+
+  <!-- Browser extension mockup -->
+  <g transform="translate(720, 200)">
+    <rect x="0" y="0" width="420" height="440" rx="12" fill="#2a2a30" filter="url(#shadow4)"/>
+
+    <!-- Browser header -->
+    <rect x="0" y="0" width="420" height="35" rx="12" fill="#3a3a42"/>
+    <rect x="0" y="20" width="420" height="15" fill="#3a3a42"/>
+    <circle cx="20" cy="17" r="5" fill="#ff5f57"/>
+    <circle cx="38" cy="17" r="5" fill="#febc2e"/>
+    <circle cx="56" cy="17" r="5" fill="#28c840"/>
+
+    <!-- Extension icon in toolbar -->
+    <rect x="350" y="7" width="22" height="22" rx="4" fill="#f59e0b"/>
+    <text x="361" y="23" text-anchor="middle" font-size="12" fill="#0a0a0c">🔐</text>
+
+    <!-- Popup -->
+    <rect x="230" y="40" width="180" height="160" rx="8" fill="#1f1f24" stroke="#f59e0b" stroke-width="2"/>
+    <rect x="230" y="40" width="180" height="35" rx="8" fill="#f59e0b"/>
+    <rect x="230" y="65" width="180" height="10" fill="#f59e0b"/>
+    <text x="245" y="63" font-family="Segoe UI, Arial, sans-serif" font-size="12" font-weight="bold" fill="#0a0a0c">🔐 ConfPass</text>
+
+    <rect x="240" y="90" width="160" height="45" rx="6" fill="#2a2a30"/>
+    <text x="255" y="112" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="600" fill="#fafafa">Google</text>
+    <text x="255" y="126" font-family="Segoe UI, Arial, sans-serif" font-size="10" fill="#a1a1aa">kullanici@gmail.com</text>
+
+    <rect x="240" y="145" width="160" height="30" rx="6" fill="#f59e0b"/>
+    <text x="320" y="165" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="11" font-weight="600" fill="#0a0a0c">Otomatik Doldur</text>
+
+    <!-- Web page content -->
+    <rect x="20" y="60" width="380" height="360" fill="#1f1f24"/>
+    <text x="40" y="100" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="bold" fill="#fafafa">Web Sayfası</text>
+    <rect x="40" y="130" width="180" height="20" rx="4" fill="#2a2a30"/>
+    <rect x="40" y="160" width="300" height="15" rx="4" fill="#2a2a30"/>
+    <rect x="40" y="185" width="250" height="15" rx="4" fill="#2a2a30"/>
+  </g>
+
+  <!-- Bottom text -->
+  <text x="640" y="750" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="18" fill="#71717a">Masaüstü uygulaması + Tarayıcı uzantısı = Tam güvenlik</text>
+</svg>

@@ -268,7 +268,7 @@ export default function Dashboard({
           Öneriler
         </h2>
         <div className="tips-grid">
-          <div className="tip-card">
+          <div className="tip-card" onClick={() => openUrl('https://chromewebstore.google.com/detail/confpass-password-manager/hhaieidomjambbcgconfnefkpffjoeoa')}>
             <div className="tip-icon">
               <Globe size={24} />
             </div>

@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1280 800">
+  <defs>
+    <linearGradient id="bg5" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#0a0a0c"/>
+      <stop offset="100%" style="stop-color:#1a1a1f"/>
+    </linearGradient>
+    <linearGradient id="shieldGrad5" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#fbbf24"/>
+      <stop offset="50%" style="stop-color:#f59e0b"/>
+      <stop offset="100%" style="stop-color:#d97706"/>
+    </linearGradient>
+    <filter id="shadow5">
+      <feDropShadow dx="0" dy="8" stdDeviation="15" flood-color="#000" flood-opacity="0.4"/>
+    </filter>
+    <filter id="glow5">
+      <feGaussianBlur stdDeviation="6" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1280" height="800" fill="url(#bg5)"/>
+
+  <!-- Decorative elements -->
+  <circle cx="1200" cy="700" r="300" fill="#f59e0b" opacity="0.03"/>
+  <circle cx="80" cy="100" r="200" fill="#f59e0b" opacity="0.03"/>
+
+  <!-- Title -->
+  <text x="640" y="70" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="42" font-weight="bold" fill="#fafafa">Neden ConfPass?</text>
+
+  <!-- Features grid -->
+  <!-- Row 1 -->
+  <g transform="translate(120, 130)">
+    <rect x="0" y="0" width="340" height="180" rx="16" fill="#1f1f24" filter="url(#shadow5)"/>
+    <circle cx="50" cy="50" r="30" fill="#f59e0b" opacity="0.15"/>
+    <text x="50" y="58" text-anchor="middle" font-size="32">🔐</text>
+    <text x="100" y="50" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="bold" fill="#fafafa">AES-256 Şifreleme</text>
+    <text x="25" y="90" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#a1a1aa">Verileriniz askeri düzeyde</text>
+    <text x="25" y="110" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#a1a1aa">şifreleme ile korunur.</text>
+    <text x="25" y="150" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#10b981">✓ Kırılması imkansız</text>
+  </g>
+
+  <g transform="translate(480, 130)">
+    <rect x="0" y="0" width="340" height="180" rx="16" fill="#1f1f24" filter="url(#shadow5)"/>
+    <circle cx="50" cy="50" r="30" fill="#f59e0b" opacity="0.15"/>
+    <text x="50" y="58" text-anchor="middle" font-size="32">💾</text>
+    <text x="100" y="50" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="bold" fill="#fafafa">Yerel Depolama</text>
+    <text x="25" y="90" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#a1a1aa">Verileriniz bulutta değil,</text>
+    <text x="25" y="110" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#a1a1aa">kendi cihazınızda saklanır.</text>
+    <text x="25" y="150" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#10b981">✓ Tam gizlilik</text>
+  </g>
+
+  <g transform="translate(840, 130)">
+    <rect x="0" y="0" width="340" height="180" rx="16" fill="#1f1f24" filter="url(#shadow5)"/>
+    <circle cx="50" cy="50" r="30" fill="#f59e0b" opacity="0.15"/>
+    <text x="50" y="58" text-anchor="middle" font-size="32">🌐</text>
+    <text x="100" y="50" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="bold" fill="#fafafa">Açık Kaynak</text>
+    <text x="25" y="90" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#a1a1aa">Kod tamamen açık ve</text>
+    <text x="25" y="110" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#a1a1aa">denetlenebilir durumda.</text>
+    <text x="25" y="150" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#10b981">✓ Şeffaflık garantisi</text>
+  </g>
+
+  <!-- Row 2 -->
+  <g transform="translate(120, 340)">
+    <rect x="0" y="0" width="340" height="180" rx="16" fill="#1f1f24" filter="url(#shadow5)"/>
+    <circle cx="50" cy="50" r="30" fill="#f59e0b" opacity="0.15"/>
+    <text x="50" y="58" text-anchor="middle" font-size="32">⚡</text>
+    <text x="100" y="50" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="bold" fill="#fafafa">Hızlı Otomatik Doldurma</text>
+    <text x="25" y="90" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#a1a1aa">Tek tıkla şifrelerinizi</text>
+    <text x="25" y="110" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#a1a1aa">otomatik olarak doldurun.</text>
+    <text x="25" y="150" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#10b981">✓ Zaman tasarrufu</text>
+  </g>
+
+  <g transform="translate(480, 340)">
+    <rect x="0" y="0" width="340" height="180" rx="16" fill="#1f1f24" filter="url(#shadow5)"/>
+    <circle cx="50" cy="50" r="30" fill="#f59e0b" opacity="0.15"/>
+    <text x="50" y="58" text-anchor="middle" font-size="32">🔑</text>
+    <text x="100" y="50" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="bold" fill="#fafafa">Passkey Desteği</text>
+    <text x="25" y="90" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#a1a1aa">Şifresiz giriş için modern</text>
+    <text x="25" y="110" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#a1a1aa">passkey teknolojisi desteği.</text>
+    <text x="25" y="150" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#10b981">✓ Geleceğin güvenliği</text>
+  </g>
+
+  <g transform="translate(840, 340)">
+    <rect x="0" y="0" width="340" height="180" rx="16" fill="#1f1f24" filter="url(#shadow5)"/>
+    <circle cx="50" cy="50" r="30" fill="#f59e0b" opacity="0.15"/>
+    <text x="50" y="58" text-anchor="middle" font-size="32">🆓</text>
+    <text x="100" y="50" font-family="Segoe UI, Arial, sans-serif" font-size="20" font-weight="bold" fill="#fafafa">Tamamen Ücretsiz</text>
+    <text x="25" y="90" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#a1a1aa">Hiçbir gizli ücret veya</text>
+    <text x="25" y="110" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#a1a1aa">premium özellik yok.</text>
+    <text x="25" y="150" font-family="Segoe UI, Arial, sans-serif" font-size="12" fill="#10b981">✓ Sonsuza kadar ücretsiz</text>
+  </g>
+
+  <!-- Bottom CTA -->
+  <g transform="translate(440, 570)">
+    <rect x="0" y="0" width="400" height="80" rx="16" fill="#f59e0b" filter="url(#shadow5)"/>
+    <text x="200" y="35" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="22" font-weight="bold" fill="#0a0a0c">Hemen Başlayın!</text>
+    <text x="200" y="60" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="14" fill="#0a0a0c">Ücretsiz indirin ve şifrelerinizi güvene alın</text>
+  </g>
+
+  <!-- Logo at bottom -->
+  <g transform="translate(580, 680) scale(0.15)">
+    <path d="M256 36 L448 104 C448 104 458 268 256 468 C54 268 64 104 64 104 Z" fill="url(#shieldGrad5)" filter="url(#glow5)"/>
+    <g transform="translate(256, 245)">
+      <circle cx="0" cy="-50" r="55" fill="#1a1a1f"/>
+      <circle cx="0" cy="-50" r="22" fill="#f59e0b"/>
+      <rect x="-14" y="-5" width="28" height="95" rx="8" fill="#1a1a1f"/>
+      <rect x="14" y="35" width="30" height="16" rx="4" fill="#1a1a1f"/>
+      <rect x="14" y="60" width="22" height="16" rx="4" fill="#1a1a1f"/>
+    </g>
+  </g>
+  <text x="640" y="760" text-anchor="middle" font-family="Segoe UI, Arial, sans-serif" font-size="16" fill="#71717a">ConfPass - Güvenli Şifre Yöneticisi</text>
+</svg>

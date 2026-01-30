@@ -21,6 +21,7 @@ import { useDebounce } from './hooks/useDebounce';
 import { useBiometric } from './hooks/useBiometric';
 import { useUpdateCheck } from './hooks/useUpdateCheck';
 import './App.css';
+import AppLogo from './assets/logo.svg';
 
 function App() {
   const [vaultLocked, setVaultLocked] = useState(true);
@@ -310,7 +311,7 @@ function App() {
 
   useEffect(() => {
     if (vaultLocked) {
-      const title = 'ConfPass v1.6.0';
+      const title = 'ConfPass v1.6.1';
       const subtitle = 'Gelişmiş Güvenlik & Şifre Yönetimi';
       
       setDisplayTitle('');
@@ -516,26 +517,9 @@ function App() {
   if (vaultLocked) {
     return (
       <div className="app unlock-screen">
-        <div className="custom-titlebar" data-tauri-drag-region>
-          <div className="titlebar-title">
-            <Shield size={16} />
-            <span>ConfPass - Password Manager</span>
-          </div>
-          <div className="titlebar-controls">
-            <button className="titlebar-button" onClick={handleMinimize} title="Küçült">
-              <Minus size={14} />
-            </button>
-            <button className="titlebar-button" onClick={handleMaximize} title="Büyüt/Küçült">
-              <Maximize2 size={14} />
-            </button>
-            <button className="titlebar-button titlebar-button-close" onClick={handleClose} title="Kapat">
-              <X size={14} />
-            </button>
-          </div>
-        </div>
         <div className="unlock-container">
           <div className="lock-icon">
-            <Lock size={64} />
+            <img src={AppLogo} alt="ConfPass" style={{ width: 80, height: 80 }} />
           </div>
           <h1 className="typing-title">
             {displayTitle}
@@ -630,7 +614,7 @@ function App() {
     <div className="app">
       <div className="custom-titlebar" data-tauri-drag-region>
         <div className="titlebar-title">
-          <Shield size={16} />
+          <img src={AppLogo} alt="ConfPass" style={{ width: 16, height: 16 }} />
           <span>ConfPass - Password Manager</span>
         </div>
         <div className="titlebar-controls">
@@ -655,11 +639,11 @@ function App() {
         >
         <div className="sidebar-header">
           <div className="sidebar-logo">
-            <Shield size={24} />
+            <img src={AppLogo} alt="ConfPass" className="sidebar-logo-img" style={{ width: 42, height: 42 }} />
             <div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                 <h2 style={{ margin: 0 }}>ConfPass</h2>
-                <span className="version-badge">v1.6.0</span>
+                <span className="version-badge">v1.6.1</span>
               </div>
               <p className="sidebar-subtitle">Password Manager</p>
             </div>
