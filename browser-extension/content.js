@@ -691,53 +691,103 @@
     'input[placeholder*="YY" i]'
   ];
 
-  // Address field selectors - comprehensive
+  // Address field selectors - comprehensive (Turkish e-commerce focused)
   const ADDRESS_SELECTORS = [
-    'input[name*="address" i]',
-    'input[name*="street" i]',
-    'input[name*="adres" i]',
-    'input[name*="konum" i]',
-    'input[name*="mahalle" i]',
-    'input[name*="sokak" i]',
-    'input[name*="cadde" i]',
-    'input[name*="apartman" i]',
-    'input[name*="bina" i]',
-    'input[name*="daire" i]',
-    'input[name*="city" i]',
-    'input[name*="sehir" i]',
-    'input[name*="şehir" i]',
-    'input[name*="ilce" i]',
-    'input[name*="ilçe" i]',
-    'input[name*="postal" i]',
-    'input[name*="zip" i]',
-    'input[name*="posta" i]',
-    'input[id*="address" i]',
-    'input[id*="adres" i]',
-    'input[id*="street" i]',
-    'input[id*="city" i]',
+    // Generic address
+    'input[name*="address" i]:not([name*="email" i]):not([name*="mail" i])',
+    'input[name*="adres" i]:not([name*="email" i]):not([name*="mail" i])',
+    'textarea[name*="address" i]', 'textarea[name*="adres" i]',
+    'textarea[id*="address" i]', 'textarea[id*="adres" i]',
+    // Street
+    'input[name*="street" i]', 'input[name*="sokak" i]', 'input[name*="cadde" i]',
+    'input[id*="street" i]', 'input[id*="sokak" i]', 'input[id*="cadde" i]',
+    // Neighborhood
+    'input[name*="mahalle" i]', 'input[name*="mah" i]', 'input[name*="semt" i]',
+    'input[id*="mahalle" i]', 'input[id*="neighborhood" i]',
+    // Building/Apartment
+    'input[name*="apartman" i]', 'input[name*="bina" i]', 'input[name*="building" i]',
+    'input[name*="daire" i]', 'input[name*="flat" i]', 'input[name*="kat" i]',
+    'input[id*="apartman" i]', 'input[id*="bina" i]', 'input[id*="daire" i]',
+    // District (İlçe)
+    'input[name*="ilce" i]', 'input[name*="ilçe" i]', 'input[name*="district" i]',
+    'input[id*="ilce" i]', 'input[id*="ilçe" i]', 'input[id*="district" i]',
+    'select[name*="ilce" i]', 'select[name*="ilçe" i]', 'select[id*="ilce" i]',
+    // City (İl)
+    'input[name*="city" i]', 'input[name*="sehir" i]', 'input[name*="şehir" i]',
+    'input[name="il" i]', 'input[name*="_il" i]', 'input[name*="il_" i]',
+    'input[id*="city" i]', 'input[id*="sehir" i]', 'input[id*="il" i]',
+    'select[name*="city" i]', 'select[name*="il" i]', 'select[name*="sehir" i]',
+    'select[id*="city" i]', 'select[id*="il" i]',
+    // Postal code
+    'input[name*="postal" i]', 'input[name*="zip" i]', 'input[name*="posta" i]',
+    'input[name*="pk" i]', 'input[name*="postcode" i]',
+    'input[id*="postal" i]', 'input[id*="zip" i]', 'input[id*="posta" i]',
+    // Country
+    'input[name*="country" i]', 'input[name*="ulke" i]', 'input[name*="ülke" i]',
+    'select[name*="country" i]', 'select[name*="ulke" i]',
+    // Location
+    'input[name*="konum" i]', 'input[name*="location" i]',
+    'input[id*="konum" i]', 'input[id*="location" i]',
+    // Autocomplete attributes
     'input[autocomplete="street-address"]',
-    'input[autocomplete="address-line1"]',
-    'input[autocomplete="address-line2"]',
-    'input[autocomplete="address-level1"]',
-    'input[autocomplete="address-level2"]',
+    'input[autocomplete="address-line1"]', 'input[autocomplete="address-line2"]',
+    'input[autocomplete="address-level1"]', 'input[autocomplete="address-level2"]',
     'input[autocomplete="postal-code"]',
-    'input[autocomplete="country"]',
-    'input[autocomplete="country-name"]',
-    'textarea[name*="address" i]',
-    'textarea[name*="adres" i]',
-    'textarea[id*="address" i]',
-    'input[placeholder*="adres" i]',
-    'input[placeholder*="address" i]',
-    'input[placeholder*="sokak" i]',
-    'input[placeholder*="mahalle" i]',
-    'input[placeholder*="şehir" i]',
-    'input[placeholder*="posta kodu" i]',
-    'input[aria-label*="adres" i]',
-    'input[aria-label*="address" i]',
-    'input[aria-label*="konum" i]',
-    'input[aria-label*="teslimat" i]',
-    'input[aria-label*="delivery" i]'
+    'input[autocomplete="country"]', 'input[autocomplete="country-name"]',
+    // Placeholders
+    'input[placeholder*="adres" i]:not([placeholder*="mail" i])',
+    'input[placeholder*="address" i]:not([placeholder*="email" i])',
+    'input[placeholder*="sokak" i]', 'input[placeholder*="cadde" i]',
+    'input[placeholder*="mahalle" i]', 'input[placeholder*="şehir" i]',
+    'input[placeholder*="ilçe" i]', 'input[placeholder*="posta" i]',
+    // Aria labels
+    'input[aria-label*="adres" i]', 'input[aria-label*="address" i]',
+    'input[aria-label*="konum" i]', 'input[aria-label*="teslimat" i]',
+    'input[aria-label*="delivery" i]', 'input[aria-label*="shipping" i]',
+    // Common Turkish e-commerce patterns
+    'input[data-testid*="address" i]', 'input[data-testid*="adres" i]',
+    'input[class*="address" i]', 'input[class*="adres" i]'
   ];
+
+  // Site-specific configurations for popular Turkish sites
+  const SITE_SPECIFIC_CONFIG = {
+    'yemeksepeti.com': {
+      addressFormSelector: '[class*="address"], [class*="AddressForm"], form[class*="delivery"]',
+      useDelayedFill: true,
+      fillDelay: 200
+    },
+    'trendyol.com': {
+      addressFormSelector: '[class*="address"], [class*="checkout"]',
+      useDelayedFill: true,
+      fillDelay: 150
+    },
+    'hepsiburada.com': {
+      addressFormSelector: '[class*="address"], [class*="delivery"]',
+      useDelayedFill: true,
+      fillDelay: 150
+    },
+    'n11.com': {
+      addressFormSelector: '[class*="address"], [class*="delivery"]',
+      useDelayedFill: true,
+      fillDelay: 100
+    },
+    'getir.com': {
+      addressFormSelector: '[class*="address"], [class*="location"]',
+      useDelayedFill: true,
+      fillDelay: 200
+    }
+  };
+
+  // Get site-specific config if available
+  function getSiteConfig() {
+    const hostname = window.location.hostname.replace('www.', '');
+    for (const [site, config] of Object.entries(SITE_SPECIFIC_CONFIG)) {
+      if (hostname.includes(site.replace('www.', ''))) {
+        return config;
+      }
+    }
+    return null;
+  }
 
   function findLoginFields() {
     const fields = { username: [], password: [], card: [], address: [] };
@@ -1299,157 +1349,372 @@
   }
 
   function fillAddressFields(addr, targetField) {
-    // Helper to fill a field and dispatch events
-    const fillField = (field, value) => {
+    // Parse address data - handle both flat and nested structures
+    const addressData = parseAddressData(addr);
+    console.log('[ConfPass] Filling address:', addressData);
+
+    // Get site-specific config
+    const siteConfig = getSiteConfig();
+    const baseDelay = siteConfig?.fillDelay || 50;
+    console.log('[ConfPass] Site config:', siteConfig ? 'found' : 'default', 'delay:', baseDelay);
+
+    // Helper to fill a field and dispatch events (with retry for React/Angular)
+    const fillField = (field, value, retryCount = 0) => {
       if (!field || !value) return false;
-      if (field.tagName === 'SELECT') {
-        const option = Array.from(field.options).find(o =>
-          o.text.toLowerCase().includes(value.toLowerCase()) ||
-          o.value.toLowerCase().includes(value.toLowerCase())
-        );
-        if (option) {
-          field.value = option.value;
+
+      try {
+        if (field.tagName === 'SELECT') {
+          // For select elements, try multiple matching strategies
+          const normalizedValue = value.toLowerCase().trim();
+          const option = Array.from(field.options).find(o => {
+            const optText = o.text.toLowerCase().trim();
+            const optValue = o.value.toLowerCase().trim();
+            return optText === normalizedValue ||
+                   optValue === normalizedValue ||
+                   optText.includes(normalizedValue) ||
+                   normalizedValue.includes(optText) ||
+                   optValue.includes(normalizedValue);
+          });
+
+          if (option) {
+            field.value = option.value;
+          } else {
+            console.log('[ConfPass] No matching option found for:', value);
+            return false;
+          }
         } else {
-          return false;
+          // For input fields, use native setter for React compatibility
+          const nativeInputValueSetter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, 'value'
+          )?.set;
+          const nativeTextareaValueSetter = Object.getOwnPropertyDescriptor(
+            window.HTMLTextAreaElement.prototype, 'value'
+          )?.set;
+
+          if (field.tagName === 'TEXTAREA' && nativeTextareaValueSetter) {
+            nativeTextareaValueSetter.call(field, value);
+          } else if (nativeInputValueSetter) {
+            nativeInputValueSetter.call(field, value);
+          } else {
+            field.value = value;
+          }
         }
-      } else {
-        field.value = value;
+
+        // Dispatch multiple events for framework compatibility
+        field.dispatchEvent(new Event('input', { bubbles: true, cancelable: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true, cancelable: true }));
+        field.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'a' }));
+        field.dispatchEvent(new KeyboardEvent('keyup', { bubbles: true, key: 'a' }));
+        field.dispatchEvent(new Event('blur', { bubbles: true }));
+
+        // Focus and blur to trigger validation
+        field.focus();
+        setTimeout(() => field.blur(), 50);
+
+        return true;
+      } catch (e) {
+        console.error('[ConfPass] Fill error:', e);
+        return false;
       }
-      field.dispatchEvent(new Event('input', { bubbles: true }));
-      field.dispatchEvent(new Event('change', { bubbles: true }));
-      field.dispatchEvent(new Event('blur', { bubbles: true }));
-      return true;
     };
 
-    // Helper to determine which address component fits this field
+    // Turkish address field type detection (more comprehensive)
     const getFieldAddressType = (field) => {
       const name = (field.name || '').toLowerCase();
       const id = (field.id || '').toLowerCase();
       const placeholder = (field.placeholder || '').toLowerCase();
       const autocomplete = (field.getAttribute('autocomplete') || '').toLowerCase();
-      const allText = `${name} ${id} ${placeholder} ${autocomplete}`;
+      const label = field.labels?.[0]?.textContent?.toLowerCase() || '';
+      const ariaLabel = (field.getAttribute('aria-label') || '').toLowerCase();
+      const className = (field.className || '').toLowerCase();
 
+      const allText = `${name} ${id} ${placeholder} ${autocomplete} ${label} ${ariaLabel} ${className}`;
+
+      // Turkish specific - Apartment/Building
+      if (allText.match(/apartman|apt|bina|building/)) return 'building';
+      if (allText.match(/daire|flat|unit|kat.*no|floor.*no/)) return 'apartment';
+      if (allText.match(/kat\b|floor\b/) && !allText.includes('no')) return 'floor';
+
+      // District (ilçe)
+      if (allText.match(/ilce|ilçe|district|semt/)) return 'district';
+
+      // Neighborhood (mahalle)
+      if (allText.match(/mahalle|neighborhood|semt|mah\b/)) return 'neighborhood';
+
+      // Street
       if (autocomplete.includes('street') || autocomplete.includes('address-line') ||
-          allText.includes('street') || allText.includes('sokak') || allText.includes('cadde') ||
-          allText.includes('mahalle') || allText.includes('adres') || allText.includes('address')) {
+          allText.match(/street|sokak|cadde|sok\b|cad\b|bulvar|blv/)) {
         return 'street';
       }
-      if (autocomplete === 'address-level2' || allText.includes('city') ||
-          allText.includes('şehir') || allText.includes('sehir') || allText.includes('il')) {
+
+      // Full address field
+      if (allText.match(/adres|address/) && !allText.match(/mail|email|e-posta/)) {
+        return 'fullAddress';
+      }
+
+      // City (il/şehir)
+      if (autocomplete === 'address-level2' ||
+          allText.match(/city|şehir|sehir|\bil\b|province/)) {
         return 'city';
       }
-      if (autocomplete === 'address-level1' || allText.includes('state') ||
-          allText.includes('province') || allText.includes('eyalet')) {
+
+      // State
+      if (autocomplete === 'address-level1' || allText.match(/state|eyalet|region|bölge/)) {
         return 'state';
       }
-      if (autocomplete === 'postal-code' || allText.includes('postal') ||
-          allText.includes('zip') || allText.includes('posta')) {
+
+      // Postal code
+      if (autocomplete === 'postal-code' || allText.match(/postal|zip|posta|pk\b/)) {
         return 'postal';
       }
-      if (autocomplete.includes('country') || allText.includes('country') ||
-          allText.includes('ülke') || allText.includes('ulke')) {
+
+      // Country
+      if (autocomplete.includes('country') || allText.match(/country|ülke|ulke/)) {
         return 'country';
       }
-      return 'street'; // default to street for generic address fields
+
+      // Phone
+      if (allText.match(/phone|telefon|tel\b|gsm|cep/)) return 'phone';
+
+      // Name on address
+      if (allText.match(/name|isim|ad\b|soyad|recipient|alıcı/)) return 'name';
+
+      return 'fullAddress'; // default to full address
     };
 
-    // Create full address string
-    const fullAddress = [addr.street, addr.city, addr.state, addr.postalCode, addr.country]
-      .filter(Boolean).join(', ');
+    // Parse stored address data into components
+    function parseAddressData(addr) {
+      // If notes field contains JSON, parse it
+      let parsed = { ...addr };
+
+      if (addr.notes) {
+        try {
+          const notesData = JSON.parse(addr.notes);
+          parsed = { ...parsed, ...notesData };
+        } catch (e) {
+          // Notes is not JSON, might be plain text address
+        }
+      }
+
+      // Build full address string
+      const parts = [
+        parsed.street || parsed.address || parsed.sokak || parsed.cadde,
+        parsed.neighborhood || parsed.mahalle,
+        parsed.district || parsed.ilce || parsed.ilçe,
+        parsed.city || parsed.sehir || parsed.şehir || parsed.il,
+        parsed.state || parsed.eyalet,
+        parsed.postalCode || parsed.postal || parsed.postaKodu || parsed.pk,
+        parsed.country || parsed.ulke || parsed.ülke
+      ].filter(Boolean);
+
+      parsed.fullAddress = parts.join(', ');
+
+      return parsed;
+    }
+
+    // Get value for a specific field type
+    const getValueForFieldType = (fieldType) => {
+      switch (fieldType) {
+        case 'street':
+          return addressData.street || addressData.sokak || addressData.cadde || '';
+        case 'neighborhood':
+          return addressData.neighborhood || addressData.mahalle || '';
+        case 'district':
+          return addressData.district || addressData.ilce || addressData.ilçe || '';
+        case 'city':
+          return addressData.city || addressData.sehir || addressData.şehir || addressData.il || '';
+        case 'state':
+          return addressData.state || addressData.eyalet || '';
+        case 'postal':
+          return addressData.postalCode || addressData.postal || addressData.postaKodu || addressData.pk || '';
+        case 'country':
+          return addressData.country || addressData.ulke || addressData.ülke || 'Türkiye';
+        case 'building':
+          return addressData.building || addressData.bina || addressData.apartman || '';
+        case 'apartment':
+          return addressData.apartment || addressData.daire || addressData.flat || '';
+        case 'floor':
+          return addressData.floor || addressData.kat || '';
+        case 'phone':
+          return addressData.phone || addressData.telefon || addressData.tel || '';
+        case 'name':
+          return addressData.name || addressData.fullName || addressData.recipientName || '';
+        case 'fullAddress':
+        default:
+          return addressData.fullAddress || '';
+      }
+    };
 
     // First, fill the target field that was clicked
     if (targetField && isFieldVisible(targetField)) {
       const fieldType = getFieldAddressType(targetField);
-      let valueToFill = fullAddress; // default to full address
-
-      switch (fieldType) {
-        case 'street': valueToFill = addr.street || fullAddress; break;
-        case 'city': valueToFill = addr.city || ''; break;
-        case 'state': valueToFill = addr.state || ''; break;
-        case 'postal': valueToFill = addr.postalCode || ''; break;
-        case 'country': valueToFill = addr.country || ''; break;
+      const valueToFill = getValueForFieldType(fieldType);
+      console.log('[ConfPass] Target field type:', fieldType, '-> value:', valueToFill);
+      if (valueToFill) {
+        fillField(targetField, valueToFill);
       }
-
-      fillField(targetField, valueToFill);
     }
 
-    // Now try to fill other address fields on the page
-    const streetSelectors = [
-      'input[name*="street" i]', 'input[name*="address" i]', 'input[name*="adres" i]',
-      'input[name*="sokak" i]', 'input[name*="cadde" i]', 'input[name*="mahalle" i]',
-      'input[autocomplete="street-address"]', 'input[autocomplete="address-line1"]',
-      'input[autocomplete="address-line2"]',
-      'textarea[name*="address" i]', 'textarea[name*="adres" i]',
-      'input[id*="address" i]', 'input[id*="adres" i]', 'input[id*="street" i]',
-      'input[placeholder*="adres" i]', 'input[placeholder*="sokak" i]'
+    // Comprehensive field selectors for Turkish sites
+    const fieldMappings = [
+      // Street/Address
+      {
+        type: 'street',
+        selectors: [
+          'input[name*="street" i]', 'input[name*="sokak" i]', 'input[name*="cadde" i]',
+          'input[id*="street" i]', 'input[id*="sokak" i]', 'input[id*="cadde" i]',
+          'input[autocomplete="street-address"]', 'input[autocomplete="address-line1"]',
+          'input[placeholder*="sokak" i]', 'input[placeholder*="cadde" i]',
+          'input[aria-label*="sokak" i]', 'input[aria-label*="cadde" i]'
+        ]
+      },
+      // Full address
+      {
+        type: 'fullAddress',
+        selectors: [
+          'input[name*="address" i]:not([name*="email" i])', 'input[name*="adres" i]:not([name*="mail" i])',
+          'textarea[name*="address" i]', 'textarea[name*="adres" i]',
+          'input[id*="address" i]:not([id*="email" i])', 'input[id*="adres" i]:not([id*="mail" i])',
+          'textarea[id*="address" i]', 'textarea[id*="adres" i]',
+          'input[placeholder*="adres" i]:not([placeholder*="mail" i])',
+          'textarea[placeholder*="adres" i]'
+        ]
+      },
+      // Neighborhood (Mahalle)
+      {
+        type: 'neighborhood',
+        selectors: [
+          'input[name*="mahalle" i]', 'input[name*="neighborhood" i]', 'input[name*="mah" i]',
+          'input[id*="mahalle" i]', 'input[id*="neighborhood" i]',
+          'input[placeholder*="mahalle" i]',
+          'select[name*="mahalle" i]', 'select[id*="mahalle" i]'
+        ]
+      },
+      // District (İlçe)
+      {
+        type: 'district',
+        selectors: [
+          'input[name*="ilce" i]', 'input[name*="ilçe" i]', 'input[name*="district" i]',
+          'input[name*="semt" i]',
+          'input[id*="ilce" i]', 'input[id*="ilçe" i]', 'input[id*="district" i]',
+          'input[placeholder*="ilçe" i]', 'input[placeholder*="ilce" i]',
+          'select[name*="ilce" i]', 'select[name*="ilçe" i]', 'select[name*="district" i]',
+          'select[id*="ilce" i]', 'select[id*="ilçe" i]'
+        ]
+      },
+      // City (İl/Şehir)
+      {
+        type: 'city',
+        selectors: [
+          'input[name*="city" i]', 'input[name*="sehir" i]', 'input[name*="şehir" i]',
+          'input[name="il" i]', 'input[name*="_il" i]', 'input[name*="il_" i]',
+          'input[id*="city" i]', 'input[id*="sehir" i]', 'input[id*="şehir" i]',
+          'input[autocomplete="address-level2"]',
+          'input[placeholder*="şehir" i]', 'input[placeholder*="city" i]', 'input[placeholder*="il" i]',
+          'select[name*="city" i]', 'select[name*="il" i]', 'select[name*="sehir" i]',
+          'select[id*="city" i]', 'select[id*="il" i]', 'select[id*="sehir" i]'
+        ]
+      },
+      // Postal code
+      {
+        type: 'postal',
+        selectors: [
+          'input[name*="postal" i]', 'input[name*="zip" i]', 'input[name*="posta" i]',
+          'input[name*="postcode" i]', 'input[name*="pk" i]',
+          'input[id*="postal" i]', 'input[id*="zip" i]', 'input[id*="posta" i]',
+          'input[autocomplete="postal-code"]',
+          'input[placeholder*="posta" i]', 'input[placeholder*="zip" i]'
+        ]
+      },
+      // Country
+      {
+        type: 'country',
+        selectors: [
+          'input[name*="country" i]', 'input[name*="ulke" i]', 'input[name*="ülke" i]',
+          'input[id*="country" i]', 'input[id*="ulke" i]',
+          'input[autocomplete="country-name"]', 'input[autocomplete="country"]',
+          'select[name*="country" i]', 'select[name*="ulke" i]', 'select[name*="ülke" i]',
+          'select[id*="country" i]', 'select[autocomplete="country"]'
+        ]
+      },
+      // Building/Apartment
+      {
+        type: 'building',
+        selectors: [
+          'input[name*="bina" i]', 'input[name*="building" i]', 'input[name*="apartman" i]',
+          'input[id*="bina" i]', 'input[id*="building" i]', 'input[id*="apartman" i]',
+          'input[placeholder*="bina" i]', 'input[placeholder*="apartman" i]'
+        ]
+      },
+      // Apartment/Flat number
+      {
+        type: 'apartment',
+        selectors: [
+          'input[name*="daire" i]', 'input[name*="flat" i]', 'input[name*="unit" i]',
+          'input[id*="daire" i]', 'input[id*="flat" i]',
+          'input[placeholder*="daire" i]'
+        ]
+      },
+      // Floor
+      {
+        type: 'floor',
+        selectors: [
+          'input[name*="kat" i]:not([name*="katman" i])', 'input[name*="floor" i]',
+          'input[id*="kat" i]:not([id*="katman" i])', 'input[id*="floor" i]',
+          'input[placeholder*="kat" i]', 'select[name*="kat" i]'
+        ]
+      },
+      // Phone
+      {
+        type: 'phone',
+        selectors: [
+          'input[name*="phone" i]', 'input[name*="telefon" i]', 'input[name*="tel" i]',
+          'input[name*="gsm" i]', 'input[name*="cep" i]', 'input[name*="mobile" i]',
+          'input[id*="phone" i]', 'input[id*="telefon" i]',
+          'input[type="tel"]', 'input[autocomplete="tel"]'
+        ]
+      }
     ];
-    if (addr.street) {
-      document.querySelectorAll(streetSelectors.join(',')).forEach(field => {
-        if (isFieldVisible(field) && field !== targetField && !field.value) {
-          fillField(field, addr.street);
-        }
-      });
-    }
 
-    // Fill city
-    const citySelectors = [
-      'input[name*="city" i]', 'input[name*="sehir" i]', 'input[name*="şehir" i]',
-      'input[name*="il" i]', 'input[id*="city" i]', 'input[id*="sehir" i]',
-      'input[autocomplete="address-level2"]',
-      'input[placeholder*="şehir" i]', 'input[placeholder*="city" i]',
-      'select[name*="city" i]', 'select[name*="il" i]', 'select[id*="city" i]'
-    ];
-    if (addr.city) {
-      document.querySelectorAll(citySelectors.join(',')).forEach(field => {
-        if (isFieldVisible(field) && field !== targetField && !field.value) {
-          fillField(field, addr.city);
-        }
-      });
-    }
+    // Fill all matching fields with delay for React/Angular sites
+    let delay = 0;
+    const filledFields = new Set();
+    filledFields.add(targetField);
 
-    // Fill state/province
-    const stateSelectors = [
-      'input[name*="state" i]', 'input[name*="province" i]', 'input[name*="region" i]',
-      'input[autocomplete="address-level1"]',
-      'select[name*="state" i]', 'select[name*="province" i]', 'select[id*="state" i]'
-    ];
-    if (addr.state) {
-      document.querySelectorAll(stateSelectors.join(',')).forEach(field => {
-        if (isFieldVisible(field) && field !== targetField && !field.value) {
-          fillField(field, addr.state);
-        }
-      });
-    }
+    fieldMappings.forEach(({ type, selectors }) => {
+      const value = getValueForFieldType(type);
+      if (!value) return;
 
-    // Fill postal code
-    const postalSelectors = [
-      'input[name*="postal" i]', 'input[name*="zip" i]', 'input[name*="posta" i]',
-      'input[name*="postcode" i]', 'input[id*="postal" i]', 'input[id*="zip" i]',
-      'input[autocomplete="postal-code"]',
-      'input[placeholder*="posta" i]', 'input[placeholder*="zip" i]'
-    ];
-    if (addr.postalCode) {
-      document.querySelectorAll(postalSelectors.join(',')).forEach(field => {
-        if (isFieldVisible(field) && field !== targetField && !field.value) {
-          fillField(field, addr.postalCode);
-        }
-      });
-    }
+      try {
+        const selector = selectors.join(',');
+        document.querySelectorAll(selector).forEach(field => {
+          if (isFieldVisible(field) && !filledFields.has(field) && !field.value) {
+            filledFields.add(field);
+            setTimeout(() => {
+              console.log('[ConfPass] Filling', type, 'field:', field.name || field.id, '->', value);
+              fillField(field, value);
+            }, delay);
+            delay += baseDelay; // Stagger fills for dynamic sites
+          }
+        });
+      } catch (e) {
+        console.error('[ConfPass] Selector error:', e);
+      }
+    });
 
-    // Fill country
-    const countrySelectors = [
-      'input[name*="country" i]', 'input[name*="ulke" i]', 'input[name*="ülke" i]',
-      'input[id*="country" i]', 'input[id*="ulke" i]',
-      'input[autocomplete="country-name"]', 'input[autocomplete="country"]',
-      'select[name*="country" i]', 'select[id*="country" i]',
-      'select[autocomplete="country"]', 'select[autocomplete="country-name"]'
-    ];
-    if (addr.country) {
-      document.querySelectorAll(countrySelectors.join(',')).forEach(field => {
-        if (isFieldVisible(field) && field !== targetField && !field.value) {
-          fillField(field, addr.country);
-        }
-      });
+    // For sites with custom dropdowns, try to trigger their change handlers
+    if (siteConfig?.useDelayedFill) {
+      setTimeout(() => {
+        // Re-dispatch events on all filled fields to ensure frameworks pick up changes
+        filledFields.forEach(field => {
+          if (field && field !== targetField) {
+            try {
+              field.dispatchEvent(new Event('input', { bubbles: true }));
+              field.dispatchEvent(new Event('change', { bubbles: true }));
+            } catch (e) {}
+          }
+        });
+      }, delay + 500);
     }
   }
 
@@ -1673,8 +1938,263 @@
       fillForm(message.data.username, message.data.password);
       sendResponse({ success: true });
     }
+
+    // Context menu: Fill from context menu
+    if (message.type === 'context_menu_fill') {
+      const activeElement = document.activeElement;
+      if (activeElement && (activeElement.tagName === 'INPUT' || activeElement.tagName === 'TEXTAREA')) {
+        // Trigger dropdown on the active element
+        if (activeElement.confpassButton) {
+          activeElement.confpassButton.click();
+        } else {
+          // Create and show dropdown
+          showDropdownForField(activeElement);
+        }
+      }
+      sendResponse({ success: true });
+    }
+
+    // Context menu: Fill generated password
+    if (message.type === 'fill_generated_password') {
+      const activeElement = document.activeElement;
+      if (activeElement && activeElement.tagName === 'INPUT') {
+        activeElement.value = message.password;
+        activeElement.dispatchEvent(new Event('input', { bubbles: true }));
+        activeElement.dispatchEvent(new Event('change', { bubbles: true }));
+        showNotification('Şifre üretildi ve dolduruldu');
+      }
+      sendResponse({ success: true });
+    }
+
+    // Context menu: Copy to clipboard
+    if (message.type === 'copy_to_clipboard') {
+      navigator.clipboard.writeText(message.text).then(() => {
+        showNotification(message.message || 'Kopyalandı');
+      });
+      sendResponse({ success: true });
+    }
+
+    // Phishing warning from background
+    if (message.type === 'phishing_warning') {
+      showPhishingWarning(message.result);
+      sendResponse({ success: true });
+    }
+
     return true;
   });
+
+  // ========== Phishing Warning Banner ==========
+  function showPhishingWarning(result) {
+    // Don't show if already exists
+    if (document.getElementById('confpass-phishing-banner')) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'confpass-phishing-banner';
+    banner.innerHTML = `
+      <style>
+        #confpass-phishing-banner {
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          z-index: 2147483647 !important;
+          background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%) !important;
+          color: white !important;
+          padding: 16px 20px !important;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+          animation: confpass-slide-down 0.3s ease !important;
+        }
+        @keyframes confpass-slide-down {
+          from { transform: translateY(-100%); }
+          to { transform: translateY(0); }
+        }
+        #confpass-phishing-banner .banner-content {
+          max-width: 1200px !important;
+          margin: 0 auto !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 16px !important;
+        }
+        #confpass-phishing-banner .banner-icon {
+          width: 32px !important;
+          height: 32px !important;
+          flex-shrink: 0 !important;
+        }
+        #confpass-phishing-banner .banner-text {
+          flex: 1 !important;
+        }
+        #confpass-phishing-banner .banner-title {
+          font-size: 16px !important;
+          font-weight: 700 !important;
+          margin: 0 0 4px 0 !important;
+        }
+        #confpass-phishing-banner .banner-subtitle {
+          font-size: 13px !important;
+          opacity: 0.9 !important;
+          margin: 0 !important;
+        }
+        #confpass-phishing-banner .banner-close {
+          background: rgba(255,255,255,0.2) !important;
+          border: none !important;
+          color: white !important;
+          padding: 8px 16px !important;
+          border-radius: 6px !important;
+          cursor: pointer !important;
+          font-size: 13px !important;
+          font-weight: 600 !important;
+          transition: background 0.2s !important;
+        }
+        #confpass-phishing-banner .banner-close:hover {
+          background: rgba(255,255,255,0.3) !important;
+        }
+      </style>
+      <div class="banner-content">
+        <svg class="banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <div class="banner-text">
+          <p class="banner-title">⚠️ ConfPass Güvenlik Uyarısı</p>
+          <p class="banner-subtitle">${result.isPhishing ? 'Bu site bir phishing (oltalama) sitesi olabilir!' : 'Bu site şüpheli görünüyor. Kişisel bilgilerinizi girmeden önce dikkatli olun.'}</p>
+        </div>
+        <button class="banner-close" onclick="this.parentElement.parentElement.remove()">Anladım</button>
+      </div>
+    `;
+    document.body.prepend(banner);
+  }
+
+  // ========== Notification Helper ==========
+  function showNotification(message) {
+    // Remove existing notification
+    const existing = document.getElementById('confpass-notification');
+    if (existing) existing.remove();
+
+    const notification = document.createElement('div');
+    notification.id = 'confpass-notification';
+    notification.innerHTML = `
+      <style>
+        #confpass-notification {
+          position: fixed !important;
+          bottom: 20px !important;
+          right: 20px !important;
+          z-index: 2147483647 !important;
+          background: #0a0a0c !important;
+          color: #fafafa !important;
+          padding: 12px 20px !important;
+          border-radius: 10px !important;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+          font-size: 13px !important;
+          font-weight: 500 !important;
+          box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(245, 158, 11, 0.2) !important;
+          animation: confpass-fade-in 0.3s ease !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 10px !important;
+        }
+        @keyframes confpass-fade-in {
+          from { opacity: 0; transform: translateY(10px); }
+          to { opacity: 1; transform: translateY(0); }
+        }
+        #confpass-notification svg {
+          width: 18px !important;
+          height: 18px !important;
+          color: #10b981 !important;
+        }
+      </style>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/>
+        <polyline points="22 4 12 14.01 9 11.01"/>
+      </svg>
+      ${message}
+    `;
+    document.body.appendChild(notification);
+
+    setTimeout(() => {
+      notification.style.animation = 'confpass-fade-in 0.3s ease reverse';
+      setTimeout(() => notification.remove(), 300);
+    }, 2500);
+  }
+
+  // Helper function to show dropdown for a field (for context menu)
+  function showDropdownForField(field) {
+    const fieldType = getFieldType(field);
+    if (fieldType === 'password') {
+      fetchAndShowDropdown(field);
+    }
+  }
+
+  async function fetchAndShowDropdown(field) {
+    const domain = window.location.hostname;
+    chrome.runtime.sendMessage({
+      type: 'get_passwords_for_site',
+      url: domain
+    }, (response) => {
+      if (response && response.success && response.passwords && response.passwords.length > 0) {
+        // Create a temporary button to trigger the dropdown logic
+        const rect = field.getBoundingClientRect();
+        const dropdown = createDropdown(response.passwords, (username, password) => {
+          fillForm(username, password);
+          dropdown.remove();
+        });
+
+        dropdown.style.top = `${rect.bottom + window.scrollY + 8}px`;
+        dropdown.style.left = `${rect.left + window.scrollX}px`;
+        document.body.appendChild(dropdown);
+
+        // Close on click outside
+        setTimeout(() => {
+          document.addEventListener('click', function closeDropdown(e) {
+            if (!dropdown.contains(e.target)) {
+              dropdown.remove();
+              document.removeEventListener('click', closeDropdown);
+            }
+          });
+        }, 100);
+      }
+    });
+  }
+
+  function createDropdown(passwords, onSelect) {
+    const dropdown = document.createElement('div');
+    dropdown.className = 'confpass-dropdown';
+    dropdown.innerHTML = `
+      <div class="confpass-dropdown-header">
+        <div class="confpass-dropdown-logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+            <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+          </svg>
+        </div>
+        <span class="confpass-dropdown-title">ConfPass</span>
+      </div>
+      <div class="confpass-dropdown-list">
+        ${passwords.map(pw => `
+          <button class="confpass-dropdown-item" data-username="${escapeAttr(pw.username)}" data-password="${escapeAttr(pw.password)}">
+            <div class="confpass-dropdown-item-icon">${(pw.title || pw.username || '?')[0].toUpperCase()}</div>
+            <div class="confpass-dropdown-item-info">
+              <div class="confpass-dropdown-item-title">${escapeHtml(pw.title || 'Hesap')}</div>
+              <div class="confpass-dropdown-item-username">${escapeHtml(pw.username)}</div>
+            </div>
+          </button>
+        `).join('')}
+      </div>
+    `;
+
+    dropdown.querySelectorAll('.confpass-dropdown-item').forEach(item => {
+      item.addEventListener('click', () => {
+        onSelect(item.dataset.username, item.dataset.password);
+      });
+    });
+
+    return dropdown;
+  }
+
+  function escapeAttr(str) {
+    if (!str) return '';
+    return str.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  }
 
   // ========== WebAuthn Handler (Passkey) ==========
   window.addEventListener('message', async function(event) {
@@ -2946,14 +3466,21 @@
         return;
       }
 
-      // Check if app is not running
-      if (duplicateCheck?.error === 'connection_error' || !duplicateCheck?.success) {
+      // Check if app is not running (only for actual connection errors)
+      if (duplicateCheck?.error === 'connection_error') {
         console.log('[ConfPass] App not running or connection error');
         showSaveNotification('ConfPass uygulaması çalışmıyor', 'error');
         return;
       }
 
-      if (duplicateCheck?.data?.exists) {
+      // If duplicate check endpoint doesn't exist or returns unexpected format, continue anyway
+      // The save will still work, just without duplicate detection
+      if (!duplicateCheck || duplicateCheck.error) {
+        console.log('[ConfPass] Duplicate check unavailable, continuing without it');
+      }
+
+      // Only skip if we successfully checked and found a duplicate
+      if (duplicateCheck?.success && duplicateCheck?.data?.exists) {
         console.log('[ConfPass] Credential already exists, skipping save prompt');
         return;
       }

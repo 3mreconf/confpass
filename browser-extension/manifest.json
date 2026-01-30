@@ -1,12 +1,17 @@
 {
   "manifest_version": 3,
   "name": "ConfPass Password Manager",
-  "version": "1.1.1",
+  "version": "1.6.5",
   "description": "Güvenli şifre yöneticisi tarayıcı eklentisi",
   "author": "emreconf",
   "permissions": [
     "activeTab",
-    "nativeMessaging"
+    "tabs",
+    "nativeMessaging",
+    "contextMenus",
+    "clipboardWrite",
+    "storage",
+    "notifications"
   ],
   "host_permissions": [
     "http://*/*",
@@ -50,6 +55,15 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "commands": {
+    "_execute_action": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+L",
+        "mac": "Command+Shift+L"
+      },
+      "description": "ConfPass popup'ını aç"
+    }
   },
   "web_accessible_resources": [
     {

@@ -4850,6 +4850,19 @@ a:focus-visible {
    Address Card
    ═══════════════════════════════════════════════════════════════════════════════ */
 
+/* Adres kartları 2 sütun kaplasın */
+.entry-card[data-category="addresses"] {
+  grid-column: span 2;
+  min-width: 500px;
+}
+
+@media (max-width: 900px) {
+  .entry-card[data-category="addresses"] {
+    grid-column: span 1;
+    min-width: auto;
+  }
+}
+
 .address-card-content {
   display: flex;
   flex-direction: column;

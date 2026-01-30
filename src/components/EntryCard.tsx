@@ -377,8 +377,9 @@ const EntryCard = memo(function EntryCard({
   }, [showToast]);
 
   return (
-    <div 
+    <div
       className={`entry-card ${isSelected ? 'selected' : ''} ${isHovered ? 'hovered' : ''}`}
+      data-category={entry.category}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
@@ -674,35 +675,39 @@ const EntryCard = memo(function EntryCard({
             e.currentTarget.style.transform = 'translateY(0)';
           }}
           >
-            <div style={{ 
-              display: 'flex', 
-              alignItems: 'center', 
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
               justifyContent: 'space-between',
+              flexWrap: 'wrap',
+              gap: '1rem',
               marginBottom: '1.25rem',
               paddingBottom: '1rem',
               borderBottom: '1px solid var(--border)'
             }}>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', flex: '1 1 auto', minWidth: '200px' }}>
                 <div style={{
-                  width: '36px',
-                  height: '36px',
-                  borderRadius: '10px',
+                  width: '42px',
+                  height: '42px',
+                  borderRadius: '12px',
                   background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
-                  boxShadow: '0 4px 12px rgba(0, 217, 255, 0.3)'
+                  boxShadow: '0 4px 12px rgba(0, 217, 255, 0.3)',
+                  flexShrink: 0
                 }}>
-                  <MapPin size={18} style={{ color: '#ffffff' }} />
+                  <MapPin size={20} style={{ color: '#ffffff' }} />
                 </div>
-                <div>
-                  <span className="notes-label" style={{ fontSize: '1rem', fontWeight: 600, display: 'block' }}>Adres Bilgileri</span>
+                <div style={{ flex: 1 }}>
+                  <span className="notes-label" style={{ fontSize: '1.1rem', fontWeight: 600, display: 'block' }}>Adres Bilgileri</span>
                   {getFullAddress() && (
-                    <span style={{ 
-                      fontSize: '0.8rem', 
+                    <span style={{
+                      fontSize: '0.85rem',
                       color: 'var(--text-secondary)',
                       display: 'block',
-                      marginTop: '0.25rem'
+                      marginTop: '0.35rem',
+                      lineHeight: 1.4
                     }}>
                       {getFullAddress()}
                     </span>
@@ -716,32 +721,38 @@ const EntryCard = memo(function EntryCard({
                     handleOpenInMaps(e);
                   }}
                   style={{
-                    background: 'rgba(0, 217, 255, 0.1)',
-                    border: '1px solid rgba(0, 217, 255, 0.2)',
-                    borderRadius: '8px',
-                    padding: '0.5rem 0.75rem',
+                    background: 'linear-gradient(135deg, rgba(0, 217, 255, 0.15) 0%, rgba(0, 217, 255, 0.1) 100%)',
+                    border: '1px solid rgba(0, 217, 255, 0.25)',
+                    borderRadius: '10px',
+                    padding: '0.65rem 1.25rem',
                     cursor: 'pointer',
                     display: 'flex',
                     alignItems: 'center',
-                    gap: '0.5rem',
+                    gap: '0.6rem',
                     color: 'var(--accent)',
                     transition: 'all 0.2s ease',
-                    fontSize: '0.85rem',
-                    fontWeight: 500
+                    fontSize: '0.9rem',
+                    fontWeight: 600,
+                    flexShrink: 0,
+                    whiteSpace: 'nowrap'
                   }}
                   onMouseEnter={(e) => {
-                    e.currentTarget.style.background = 'rgba(0, 217, 255, 0.2)';
-                    e.currentTarget.style.borderColor = 'rgba(0, 217, 255, 0.4)';
-                    e.currentTarget.style.transform = 'scale(1.05)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%)';
+                    e.currentTarget.style.borderColor = 'var(--accent)';
+                    e.currentTarget.style.color = '#ffffff';
+                    e.currentTarget.style.transform = 'translateY(-2px)';
+                    e.currentTarget.style.boxShadow = '0 4px 12px rgba(0, 217, 255, 0.4)';
                   }}
                   onMouseLeave={(e) => {
-                    e.currentTarget.style.background = 'rgba(0, 217, 255, 0.1)';
-                    e.currentTarget.style.borderColor = 'rgba(0, 217, 255, 0.2)';
-                    e.currentTarget.style.transform = 'scale(1)';
+                    e.currentTarget.style.background = 'linear-gradient(135deg, rgba(0, 217, 255, 0.15) 0%, rgba(0, 217, 255, 0.1) 100%)';
+                    e.currentTarget.style.borderColor = 'rgba(0, 217, 255, 0.25)';
+                    e.currentTarget.style.color = 'var(--accent)';
+                    e.currentTarget.style.transform = 'translateY(0)';
+                    e.currentTarget.style.boxShadow = 'none';
                   }}
                   title="Haritada Aç"
                 >
-                  <Map size={14} />
+                  <Map size={16} />
                   <span>Haritada Aç</span>
                 </button>
               )}
