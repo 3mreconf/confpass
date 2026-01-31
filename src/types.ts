@@ -1,3 +1,11 @@
+export interface FileAttachment {
+  id: string;
+  filename: string;
+  mime_type: string;
+  size: number;
+  created_at: number;
+}
+
 export interface PasswordEntry {
   id: string;
   title: string;
@@ -10,6 +18,7 @@ export interface PasswordEntry {
   category: string;
   folder_id?: string;
   tags?: string[];
+  attachments?: FileAttachment[];
 }
 
 export interface Folder {

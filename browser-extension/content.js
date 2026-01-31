@@ -2787,8 +2787,73 @@
 
   function scanForTotpFields() {
     const totpFields = findTotpFields();
-    totpFields.forEach(field => addTotpIconToField(field));
+    totpFields.forEach(field => {
+      addTotpIconToField(field);
+      // Auto-fill if field is visible and focused
+      if (document.activeElement === field || isFieldVisible(field)) {
+        autoFillTotpIfAvailable(field);
+      }
+    });
   }
+
+  // Check if field is visible in viewport
+  function isFieldVisible(field) {
+    const rect = field.getBoundingClientRect();
+    return (
+      rect.top >= 0 &&
+      rect.left >= 0 &&
+      rect.bottom <= (window.innerHeight || document.documentElement.clientHeight) &&
+      rect.right <= (window.innerWidth || document.documentElement.clientWidth) &&
+      field.offsetParent !== null &&
+      getComputedStyle(field).visibility !== 'hidden' &&
+      getComputedStyle(field).display !== 'none'
+    );
+  }
+
+  // Auto-fill TOTP code if available
+  async function autoFillTotpIfAvailable(field) {
+    // Prevent double filling
+    if (field.dataset.confpassTotpFilled) return;
+
+    const domain = window.location.hostname;
+    try {
+      const response = await new Promise((resolve) => {
+        chrome.runtime.sendMessage({
+          type: 'get_totp_code',
+          domain: domain
+        }, resolve);
+      });
+
+      if (response && response.success && response.data && response.data.code) {
+        // Fill the field
+        field.value = response.data.code;
+        field.dataset.confpassTotpFilled = 'true';
+
+        // Trigger events so the site recognizes the input
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+
+        // Clear the filled flag after a short delay to allow re-fill if needed
+        setTimeout(() => {
+          delete field.dataset.confpassTotpFilled;
+        }, 35000); // Clear after TOTP expires (30s + 5s buffer)
+
+        showTotpNotification(`${response.data.issuer || 'TOTP'} kodu otomatik girildi`, 'success');
+      }
+    } catch (error) {
+      console.error('[ConfPass] Auto TOTP error:', error);
+    }
+  }
+
+  // Listen for focus events on TOTP fields
+  document.addEventListener('focusin', (e) => {
+    if (e.target && e.target.tagName === 'INPUT') {
+      const totpFields = findTotpFields();
+      if (totpFields.includes(e.target)) {
+        autoFillTotpIfAvailable(e.target);
+      }
+    }
+  }, true);
 
   // ========== Auto-Save Form Detection ==========
   const processedForms = new WeakSet();

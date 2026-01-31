@@ -3,7 +3,7 @@ members = ["native-messaging-host"]
 
 [package]
 name = "confpass"
-version = "1.6.6"
+version = "1.6.7"
 description = "Modern Password Manager by emreconf"
 authors = ["emreconf"]
 edition = "2021"
@@ -18,7 +18,6 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
-tauri-plugin-stronghold = "2"
 tauri-plugin-biometric = "2"
 tauri-plugin-fs = "2"
 windows = { version = "0.58", features = [

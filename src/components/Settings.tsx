@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { openUrl } from '@tauri-apps/plugin-opener';
-import { ArrowLeft, Power, Lock, Download, Upload, Info, ChevronDown, CheckCircle, RefreshCw, ExternalLink, AlertTriangle, Trash2 } from 'lucide-react';
+import { ArrowLeft, Power, Lock, Download, Upload, Info, ChevronDown, CheckCircle, RefreshCw, ExternalLink, AlertTriangle, Trash2, Timer } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 import packageJson from '../../package.json';
 import './Settings.css';
@@ -32,6 +32,17 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
   const [isResetting, setIsResetting] = useState(false);
   const [showResetConfirm, setShowResetConfirm] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showExportModal, setShowExportModal] = useState(false);
+  const [exportPassword, setExportPassword] = useState('');
+  const [exportPasswordConfirm, setExportPasswordConfirm] = useState('');
+  const [isExporting, setIsExporting] = useState(false);
+  const [showEncryptedImportModal, setShowEncryptedImportModal] = useState(false);
+  const [importPassword, setImportPassword] = useState('');
+  const [encryptedFileContent, setEncryptedFileContent] = useState('');
+  const [isImporting, setIsImporting] = useState(false);
+  const [passwordRotationTimeout, setPasswordRotationTimeout] = useState(0);
+  const [isRotationDropdownOpen, setIsRotationDropdownOpen] = useState(false);
+  const rotationDropdownRef = useRef<HTMLDivElement>(null);
 
   const timeoutOptions = [
     { value: 60, label: '1 dakika' },
@@ -42,10 +53,20 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
     { value: 0, label: 'Devre dışı' },
   ];
 
+  const rotationTimeoutOptions = [
+    { value: 0, label: 'Devre dışı' },
+    { value: 900, label: '15 dakika' },
+    { value: 1800, label: '30 dakika' },
+    { value: 3600, label: '1 saat' },
+    { value: 7200, label: '2 saat' },
+    { value: 14400, label: '4 saat' },
+  ];
+
   useEffect(() => {
     loadSettings();
     checkForUpdates();
     loadStreamProtectionStatus();
+    loadPasswordRotation();
 
     // Stream protection event listener
     const unlisten = listen<{
@@ -60,6 +81,21 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
     return () => {
       unlisten.then(fn => fn());
     };
+  }, []);
+
+  // Click outside handler for dropdowns
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (timeoutDropdownRef.current && !timeoutDropdownRef.current.contains(event.target as Node)) {
+        setIsTimeoutDropdownOpen(false);
+      }
+      if (rotationDropdownRef.current && !rotationDropdownRef.current.contains(event.target as Node)) {
+        setIsRotationDropdownOpen(false);
+      }
+    };
+
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
   const checkForUpdates = useCallback(async () => {
@@ -110,6 +146,34 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
       console.error('Ayarlar yüklenemedi:', error);
     }
   }, []);
+
+  const loadPasswordRotation = useCallback(async () => {
+    try {
+      const timeout = await invoke<number>('get_password_rotation_timeout');
+      setPasswordRotationTimeout(timeout);
+    } catch (error) {
+      console.error('Password rotation yüklenemedi:', error);
+    }
+  }, []);
+
+  const handlePasswordRotationTimeout = useCallback(async (timeout: number) => {
+    setIsLoading(true);
+    try {
+      await invoke('set_password_rotation_timeout', { seconds: timeout });
+      setPasswordRotationTimeout(timeout);
+      showToast(
+        timeout === 0
+          ? 'Ana şifre sıfırlama devre dışı bırakıldı'
+          : 'Ana şifre sıfırlama süresi güncellendi',
+        'success'
+      );
+    } catch (error) {
+      showToast('Ayarlar kaydedilemedi', 'error');
+      console.error('Password rotation hatası:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  }, [showToast]);
 
   const handleUseBiometric = useCallback(async (enabled: boolean) => {
     setIsLoading(true);
@@ -205,6 +269,10 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
   }, [showToast]);
 
   const handleExport = useCallback(async () => {
+    setShowExportModal(true);
+  }, []);
+
+  const handleExportUnencrypted = useCallback(async () => {
     try {
       const data = await invoke<string>('export_vault');
       const blob = new Blob([data], { type: 'application/json' });
@@ -214,12 +282,99 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
       a.download = `confpass-export-${new Date().toISOString().split('T')[0]}.json`;
       a.click();
       URL.revokeObjectURL(url);
+      setShowExportModal(false);
       showToast('Kasa başarıyla dışa aktarıldı', 'success');
     } catch (error) {
       const errorStr = String(error || '');
       showToast(errorStr || 'Dışa aktarma hatası', 'error');
     }
   }, [showToast]);
+
+  const handleExportEncrypted = useCallback(async () => {
+    if (exportPassword.length < 8) {
+      showToast('Şifre en az 8 karakter olmalı', 'error');
+      return;
+    }
+    if (exportPassword !== exportPasswordConfirm) {
+      showToast('Şifreler eşleşmiyor', 'error');
+      return;
+    }
+
+    setIsExporting(true);
+    try {
+      const data = await invoke<string>('export_vault_encrypted', { exportPassword });
+      const blob = new Blob([data], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `confpass-encrypted-${new Date().toISOString().split('T')[0]}.cpvault`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setShowExportModal(false);
+      setExportPassword('');
+      setExportPasswordConfirm('');
+      showToast('Şifreli yedek başarıyla oluşturuldu', 'success');
+    } catch (error) {
+      const errorStr = String(error || '');
+      showToast(errorStr || 'Dışa aktarma hatası', 'error');
+    } finally {
+      setIsExporting(false);
+    }
+  }, [exportPassword, exportPasswordConfirm, showToast]);
+
+  const handleImportEncryptedFile = useCallback(() => {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.cpvault,.json';
+    input.onchange = async (e) => {
+      const file = (e.target as HTMLInputElement).files?.[0];
+      if (!file) return;
+
+      try {
+        const text = await file.text();
+        // Check if it's an encrypted file
+        const parsed = JSON.parse(text);
+        if (parsed.format === 'confpass_encrypted_v1') {
+          setEncryptedFileContent(text);
+          setShowEncryptedImportModal(true);
+          setShowImportModal(false);
+        } else {
+          // Regular import
+          const count = await invoke<number>('import_vault', { jsonData: text });
+          showToast(`${count} kayıt başarıyla içe aktarıldı`, 'success');
+          setShowImportModal(false);
+        }
+      } catch (error) {
+        const errorStr = String(error || '');
+        showToast(errorStr || 'İçe aktarma hatası', 'error');
+      }
+    };
+    input.click();
+  }, [showToast]);
+
+  const handleImportEncrypted = useCallback(async () => {
+    if (!importPassword) {
+      showToast('Lütfen şifre girin', 'error');
+      return;
+    }
+
+    setIsImporting(true);
+    try {
+      const count = await invoke<number>('import_vault_encrypted', {
+        encryptedJson: encryptedFileContent,
+        importPassword
+      });
+      showToast(`${count} kayıt başarıyla içe aktarıldı`, 'success');
+      setShowEncryptedImportModal(false);
+      setImportPassword('');
+      setEncryptedFileContent('');
+    } catch (error) {
+      const errorStr = String(error || '');
+      showToast(errorStr || 'İçe aktarma hatası', 'error');
+    } finally {
+      setIsImporting(false);
+    }
+  }, [importPassword, encryptedFileContent, showToast]);
 
   // CSV Parser - handles quoted fields and commas within quotes
   const parseCSV = (text: string): string[][] => {
@@ -669,6 +824,59 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
               <span className="toggle-slider"></span>
             </label>
           </div>
+
+          <div className="settings-item">
+            <div className="settings-item-info">
+              <div style={{ display: 'flex', alignItems: 'baseline', gap: '0.5rem' }}>
+                <h3 style={{ margin: 0 }}>Ana Şifre Sıfırlama</h3>
+                {passwordRotationTimeout > 0 && (
+                  <span style={{
+                    fontSize: '0.65rem',
+                    padding: '0.2rem 0.5rem',
+                    background: 'rgba(34, 197, 94, 0.15)',
+                    color: '#22c55e',
+                    borderRadius: '9999px',
+                    fontWeight: 600,
+                    letterSpacing: '0.02em',
+                    lineHeight: 1
+                  }}>
+                    Aktif
+                  </span>
+                )}
+              </div>
+              <p style={{ marginTop: '0.25rem' }}>Belirtilen süre sonunda ana şifreyi bellekten sil (yeniden giriş gerektirir)</p>
+            </div>
+            <div className="settings-time-selector" ref={rotationDropdownRef}>
+              <button
+                type="button"
+                className="custom-dropdown-button"
+                onClick={() => setIsRotationDropdownOpen(!isRotationDropdownOpen)}
+                disabled={isLoading}
+              >
+                <Timer size={16} style={{ marginRight: '0.5rem', opacity: 0.7 }} />
+                <span>{rotationTimeoutOptions.find(opt => opt.value === passwordRotationTimeout)?.label || 'Devre dışı'}</span>
+                <ChevronDown size={16} className={isRotationDropdownOpen ? 'open' : ''} />
+              </button>
+              {isRotationDropdownOpen && (
+                <div className="custom-dropdown-menu">
+                  {rotationTimeoutOptions.map(option => (
+                    <button
+                      key={option.value}
+                      type="button"
+                      className={`custom-dropdown-item ${passwordRotationTimeout === option.value ? 'selected' : ''}`}
+                      onClick={() => {
+                        handlePasswordRotationTimeout(option.value);
+                        setIsRotationDropdownOpen(false);
+                      }}
+                    >
+                      {option.label}
+                      {passwordRotationTimeout === option.value && <CheckCircle size={16} />}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         <div className="settings-section">
@@ -1055,6 +1263,43 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem', marginBottom: '1.5rem' }}>
               <button
+                onClick={handleImportEncryptedFile}
+                style={{
+                  padding: '1rem',
+                  borderRadius: '12px',
+                  border: '1px solid var(--accent)',
+                  background: 'rgba(0, 217, 255, 0.05)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  textAlign: 'left',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.background = 'rgba(0, 217, 255, 0.1)'}
+                onMouseOut={(e) => e.currentTarget.style.background = 'rgba(0, 217, 255, 0.05)'}
+              >
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  fontWeight: 'bold',
+                  color: '#fff'
+                }}>
+                  <Lock size={18} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600 }}>ConfPass Şifreli Yedek</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>.cpvault veya şifreli JSON dosyası</div>
+                </div>
+              </button>
+
+              <button
                 onClick={() => handleImportFile('confpass')}
                 style={{
                   padding: '1rem',
@@ -1085,7 +1330,7 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
                 }}>CP</div>
                 <div>
                   <div style={{ fontWeight: 600 }}>ConfPass</div>
-                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>JSON veya TXT dosyası</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>JSON veya TXT dosyası (şifresiz)</div>
                 </div>
               </button>
 
@@ -1221,6 +1466,313 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
             >
               İptal
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* Export Modal */}
+      {showExportModal && (
+        <div className="modal-overlay" style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div className="modal-content" style={{
+            background: 'var(--bg-secondary)',
+            borderRadius: '16px',
+            padding: '2rem',
+            maxWidth: '450px',
+            width: '90%',
+            border: '1px solid var(--border)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '12px',
+                background: 'var(--accent-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Download size={24} style={{ color: 'var(--accent)' }} />
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Kasayı Dışa Aktar</h2>
+                <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  Export türünü seçin
+                </p>
+              </div>
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem', marginBottom: '1.5rem' }}>
+              <button
+                onClick={handleExportUnencrypted}
+                style={{
+                  padding: '1rem',
+                  borderRadius: '12px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '1rem',
+                  textAlign: 'left',
+                  transition: 'all 0.2s'
+                }}
+                onMouseOver={(e) => e.currentTarget.style.borderColor = 'var(--accent)'}
+                onMouseOut={(e) => e.currentTarget.style.borderColor = 'var(--border)'}
+              >
+                <div style={{
+                  width: '40px',
+                  height: '40px',
+                  borderRadius: '8px',
+                  background: 'var(--bg-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <Download size={20} />
+                </div>
+                <div>
+                  <div style={{ fontWeight: 600 }}>Şifresiz Export (JSON)</div>
+                  <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)' }}>Düz metin, diğer uygulamalara aktarmak için</div>
+                </div>
+              </button>
+
+              <div style={{ borderTop: '1px solid var(--border)', paddingTop: '1rem' }}>
+                <div style={{ fontWeight: 600, marginBottom: '0.75rem' }}>Şifreli Export (.cpvault)</div>
+                <div style={{ fontSize: '0.85rem', color: 'var(--text-secondary)', marginBottom: '1rem' }}>
+                  Güvenli yedekleme için şifre ile koruma
+                </div>
+
+                <div style={{ marginBottom: '0.75rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                    Şifre (en az 8 karakter)
+                  </label>
+                  <input
+                    type="password"
+                    value={exportPassword}
+                    onChange={(e) => setExportPassword(e.target.value)}
+                    placeholder="Şifre"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border)',
+                      background: 'var(--bg-tertiary)',
+                      color: 'var(--text-primary)',
+                      fontSize: '1rem',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                <div style={{ marginBottom: '1rem' }}>
+                  <label style={{ display: 'block', marginBottom: '0.5rem', fontSize: '0.9rem' }}>
+                    Şifre Tekrar
+                  </label>
+                  <input
+                    type="password"
+                    value={exportPasswordConfirm}
+                    onChange={(e) => setExportPasswordConfirm(e.target.value)}
+                    placeholder="Şifre tekrar"
+                    style={{
+                      width: '100%',
+                      padding: '0.75rem 1rem',
+                      borderRadius: '8px',
+                      border: '1px solid var(--border)',
+                      background: 'var(--bg-tertiary)',
+                      color: 'var(--text-primary)',
+                      fontSize: '1rem',
+                      boxSizing: 'border-box'
+                    }}
+                  />
+                </div>
+
+                <button
+                  onClick={handleExportEncrypted}
+                  disabled={isExporting || exportPassword.length < 8 || exportPassword !== exportPasswordConfirm}
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    borderRadius: '8px',
+                    border: 'none',
+                    background: exportPassword.length >= 8 && exportPassword === exportPasswordConfirm
+                      ? 'linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%)'
+                      : 'rgba(0, 217, 255, 0.3)',
+                    color: 'white',
+                    cursor: exportPassword.length >= 8 && exportPassword === exportPasswordConfirm ? 'pointer' : 'not-allowed',
+                    fontWeight: 500,
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    gap: '0.5rem'
+                  }}
+                >
+                  {isExporting ? (
+                    <>
+                      <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                      Şifreleniyor...
+                    </>
+                  ) : (
+                    <>
+                      <Lock size={16} />
+                      Şifreli Export
+                    </>
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <button
+              onClick={() => {
+                setShowExportModal(false);
+                setExportPassword('');
+                setExportPasswordConfirm('');
+              }}
+              style={{
+                width: '100%',
+                padding: '0.75rem',
+                borderRadius: '8px',
+                border: '1px solid var(--border)',
+                background: 'var(--bg-tertiary)',
+                color: 'var(--text-primary)',
+                cursor: 'pointer',
+                fontWeight: 500
+              }}
+            >
+              İptal
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Encrypted Import Modal */}
+      {showEncryptedImportModal && (
+        <div className="modal-overlay" style={{
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          right: 0,
+          bottom: 0,
+          background: 'rgba(0, 0, 0, 0.8)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          zIndex: 1000
+        }}>
+          <div className="modal-content" style={{
+            background: 'var(--bg-secondary)',
+            borderRadius: '16px',
+            padding: '2rem',
+            maxWidth: '400px',
+            width: '90%',
+            border: '1px solid var(--border)'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '1rem', marginBottom: '1.5rem' }}>
+              <div style={{
+                width: '48px',
+                height: '48px',
+                borderRadius: '12px',
+                background: 'var(--accent-muted)',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center'
+              }}>
+                <Lock size={24} style={{ color: 'var(--accent)' }} />
+              </div>
+              <div>
+                <h2 style={{ margin: 0, fontSize: '1.25rem' }}>Şifreli Dosya</h2>
+                <p style={{ margin: '0.25rem 0 0', color: 'var(--text-secondary)', fontSize: '0.9rem' }}>
+                  Dosyayı açmak için şifre girin
+                </p>
+              </div>
+            </div>
+
+            <div style={{ marginBottom: '1.5rem' }}>
+              <input
+                type="password"
+                value={importPassword}
+                onChange={(e) => setImportPassword(e.target.value)}
+                placeholder="Şifre"
+                autoFocus
+                style={{
+                  width: '100%',
+                  padding: '0.75rem 1rem',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  fontSize: '1rem',
+                  boxSizing: 'border-box'
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && importPassword) {
+                    handleImportEncrypted();
+                  }
+                }}
+              />
+            </div>
+
+            <div style={{ display: 'flex', gap: '0.75rem' }}>
+              <button
+                onClick={() => {
+                  setShowEncryptedImportModal(false);
+                  setImportPassword('');
+                  setEncryptedFileContent('');
+                }}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  borderRadius: '8px',
+                  border: '1px solid var(--border)',
+                  background: 'var(--bg-tertiary)',
+                  color: 'var(--text-primary)',
+                  cursor: 'pointer',
+                  fontWeight: 500
+                }}
+              >
+                İptal
+              </button>
+              <button
+                onClick={handleImportEncrypted}
+                disabled={isImporting || !importPassword}
+                style={{
+                  flex: 1,
+                  padding: '0.75rem',
+                  borderRadius: '8px',
+                  border: 'none',
+                  background: importPassword
+                    ? 'linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%)'
+                    : 'rgba(0, 217, 255, 0.3)',
+                  color: 'white',
+                  cursor: importPassword ? 'pointer' : 'not-allowed',
+                  fontWeight: 500,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: '0.5rem'
+                }}
+              >
+                {isImporting ? (
+                  <>
+                    <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                    Açılıyor...
+                  </>
+                ) : (
+                  'İçe Aktar'
+                )}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -186,6 +186,10 @@ function App() {
   const [folderMenuOpen, setFolderMenuOpen] = useState<string | null>(null);
   const [expandedFolders, setExpandedFolders] = useState<Set<string>>(new Set());
 
+  // Bulk operations state
+  const [selectionMode, setSelectionMode] = useState(false);
+  const [selectedEntries, setSelectedEntries] = useState<Set<string>>(new Set());
+
   const showToast = useCallback((message: string, type: 'success' | 'error' | 'info' = 'info') => {
     setToast({ message, type });
     setTimeout(() => setToast(null), TOAST_DURATION);
@@ -322,7 +326,7 @@ function App() {
     try {
       const loadedEntries = await invoke<PasswordEntry[]>('get_password_entries');
       setEntries(loadedEntries);
-      
+
       await invoke('log_activity', {
         action: 'view',
         entry_id: null,
@@ -331,12 +335,78 @@ function App() {
     } catch (error) {
       console.error('Error loading entries:', error);
       const errorStr = String(error || '');
-      const errorMessage = errorStr.includes('Kasa kilitli') 
-        ? 'Kasa kilitli' 
+      const errorMessage = errorStr.includes('Kasa kilitli')
+        ? 'Kasa kilitli'
         : 'Kayıtlar yüklenemedi';
       showToast(errorMessage, 'error');
     }
   }, [showToast]);
+
+  // Bulk operations
+  const toggleSelection = useCallback((id: string) => {
+    setSelectedEntries(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleBulkDelete = useCallback(async () => {
+    if (selectedEntries.size === 0) return;
+
+    setConfirmDialog({
+      message: `${selectedEntries.size} kaydı silmek istediğinize emin misiniz?`,
+      onConfirm: async () => {
+        try {
+          const ids = Array.from(selectedEntries);
+          const deleted = await invoke<number>('bulk_delete_entries', { ids });
+          showToast(`${deleted} kayıt silindi`, 'success');
+          setSelectedEntries(new Set());
+          setSelectionMode(false);
+          loadEntries();
+          setConfirmDialog(null);
+        } catch (error) {
+          const errorStr = String(error || '');
+          showToast(errorStr || 'Toplu silme hatası', 'error');
+          setConfirmDialog(null);
+        }
+      }
+    });
+  }, [selectedEntries, showToast, loadEntries]);
+
+  const handleBulkMove = useCallback(async (folderId: string | null) => {
+    if (selectedEntries.size === 0) return;
+
+    try {
+      const ids = Array.from(selectedEntries);
+      const moved = await invoke<number>('bulk_move_to_folder', { ids, folderId });
+      showToast(`${moved} kayıt taşındı`, 'success');
+      setSelectedEntries(new Set());
+      setSelectionMode(false);
+      loadEntries();
+    } catch (error) {
+      const errorStr = String(error || '');
+      showToast(errorStr || 'Toplu taşıma hatası', 'error');
+    }
+  }, [selectedEntries, showToast, loadEntries]);
+
+  const selectAll = useCallback((filteredIds: string[]) => {
+    const allIds = new Set(filteredIds);
+    setSelectedEntries(allIds);
+  }, []);
+
+  const deselectAll = useCallback(() => {
+    setSelectedEntries(new Set());
+  }, []);
+
+  const exitSelectionMode = useCallback(() => {
+    setSelectionMode(false);
+    setSelectedEntries(new Set());
+  }, []);
 
   // Folder functions
   const loadFolders = useCallback(async () => {
@@ -394,6 +464,38 @@ function App() {
       showToast('Kayıt taşınamadı', 'error');
     }
   }, [loadEntries, showToast]);
+
+  // Drag & Drop handlers
+  const [dragOverFolder, setDragOverFolder] = useState<string | null>(null);
+
+  const handleDragStart = useCallback((e: React.DragEvent, entryId: string) => {
+    e.dataTransfer.setData('text/plain', entryId);
+    e.dataTransfer.effectAllowed = 'move';
+  }, []);
+
+  const handleDrop = useCallback(async (e: React.DragEvent, folderId: string | null) => {
+    e.preventDefault();
+    setDragOverFolder(null);
+    const entryId = e.dataTransfer.getData('text/plain');
+    if (entryId) {
+      await moveEntryToFolder(entryId, folderId);
+    }
+  }, [moveEntryToFolder]);
+
+  const handleDragOver = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+  }, []);
+
+  const handleDragEnter = useCallback((e: React.DragEvent, folderId: string | null) => {
+    e.preventDefault();
+    setDragOverFolder(folderId);
+  }, []);
+
+  const handleDragLeave = useCallback((e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOverFolder(null);
+  }, []);
 
   // Expose moveEntryToFolder for development/debugging
   useEffect(() => {
@@ -1015,8 +1117,12 @@ function App() {
               <>
                 {/* All entries option */}
                 <button
-                  className={`folder-item ${!selectedFolder ? 'active' : ''}`}
+                  className={`folder-item ${!selectedFolder ? 'active' : ''} ${dragOverFolder === 'root' ? 'drag-over' : ''}`}
                   onClick={() => setSelectedFolder(null)}
+                  onDragOver={handleDragOver}
+                  onDragEnter={(e) => handleDragEnter(e, 'root')}
+                  onDragLeave={handleDragLeave}
+                  onDrop={(e) => handleDrop(e, null)}
                 >
                   <FolderIcon size={16} />
                   <span>Tüm Kayıtlar</span>
@@ -1025,9 +1131,13 @@ function App() {
                 {rootFolders.map(folder => (
                   <div key={folder.id} className="folder-item-wrapper">
                     <div
-                      className={`folder-item ${selectedFolder === folder.id ? 'active' : ''}`}
+                      className={`folder-item ${selectedFolder === folder.id ? 'active' : ''} ${dragOverFolder === folder.id ? 'drag-over' : ''}`}
                       onClick={() => setSelectedFolder(folder.id)}
                       style={{ '--folder-color': folder.color } as React.CSSProperties}
+                      onDragOver={handleDragOver}
+                      onDragEnter={(e) => handleDragEnter(e, folder.id)}
+                      onDragLeave={handleDragLeave}
+                      onDrop={(e) => handleDrop(e, folder.id)}
                     >
                       {getChildFolders(folder.id).length > 0 && (
                         <button
@@ -1341,6 +1451,27 @@ function App() {
                 className="search-input-main"
               />
             </div>
+            {filteredEntries.length > 0 && !selectionMode && (
+              <button
+                className="selection-mode-btn"
+                onClick={() => setSelectionMode(true)}
+                title="Çoklu seçim modu"
+                style={{
+                  background: 'var(--bg-tertiary)',
+                  border: '1px solid var(--border)',
+                  borderRadius: '8px',
+                  padding: '0.5rem 0.75rem',
+                  cursor: 'pointer',
+                  color: 'var(--text-secondary)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  transition: 'all 0.2s'
+                }}
+              >
+                <Grid3x3 size={18} />
+              </button>
+            )}
           </div>
         </div>
 
@@ -1351,22 +1482,76 @@ function App() {
             setShowAddDropdown(false);
           }
         }}>
+          {/* Bulk Operations Bar */}
+          {selectionMode && (
+            <div className="bulk-operations-bar">
+              <div className="selection-info">
+                <span className="selection-count">{selectedEntries.size}</span>
+                <span>kayıt seçildi</span>
+                <button className="bulk-btn" onClick={() => selectAll(filteredEntries.map(e => e.id))}>
+                  Tümünü Seç
+                </button>
+                <button className="bulk-btn" onClick={deselectAll}>
+                  Seçimi Temizle
+                </button>
+              </div>
+              <div className="bulk-actions">
+                {folders.length > 0 && (
+                  <div style={{ position: 'relative' }}>
+                    <select
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        if (val === 'remove') {
+                          handleBulkMove(null);
+                        } else if (val) {
+                          handleBulkMove(val);
+                        }
+                        e.target.value = '';
+                      }}
+                      defaultValue=""
+                      style={{
+                        padding: '0.5rem 1rem',
+                        borderRadius: '8px',
+                        border: '1px solid var(--border)',
+                        background: 'var(--bg-tertiary)',
+                        color: 'var(--text-primary)',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      <option value="" disabled>Klasöre Taşı</option>
+                      <option value="remove">Klasörden Çıkar</option>
+                      {folders.map(f => (
+                        <option key={f.id} value={f.id}>{f.name}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                <button className="bulk-btn danger" onClick={handleBulkDelete}>
+                  <Trash2 size={16} />
+                  Seçilenleri Sil
+                </button>
+                <button className="bulk-btn exit" onClick={exitSelectionMode}>
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          )}
           <div className="entries-grid">
             {filteredEntries.length === 0 ? (
               <div className="empty-state">
                 <Key size={64} />
                 <p>
-                  {viewMode === 'favorites' 
-                    ? 'Favori kayıt yok' 
-                    : searchQuery 
-                      ? 'Arama sonucu bulunamadı' 
+                  {viewMode === 'favorites'
+                    ? 'Favori kayıt yok'
+                    : searchQuery
+                      ? 'Arama sonucu bulunamadı'
                       : 'Henüz kayıt yok'}
                 </p>
                 <p className="empty-subtitle">
                   {viewMode === 'favorites'
                     ? 'Favorilere eklemek için kayıt kartındaki yıldız ikonuna tıklayın'
-                    : searchQuery 
-                      ? 'Farklı bir arama terimi deneyin' 
+                    : searchQuery
+                      ? 'Farklı bir arama terimi deneyin'
                       : 'Üstteki ekle butonunu kullanarak ilk şifrenizi ekleyin'}
                 </p>
               </div>
@@ -1382,7 +1567,7 @@ function App() {
                     showToast={showToast}
                     loadEntries={loadEntries}
                     setConfirmDialog={setConfirmDialog}
-                    isSelected={false}
+                    isSelected={selectedEntries.has(entry.id)}
                     isFavorite={favorites.has(entry.id)}
                     onToggleFavorite={(id) => {
                       setFavorites(prev => {
@@ -1402,6 +1587,9 @@ function App() {
                     onShowTotp={(secret, issuer, account) => {
                       setTotpModal({ secret, issuer, account });
                     }}
+                    selectionMode={selectionMode}
+                    onToggleSelect={toggleSelection}
+                    onDragStart={handleDragStart}
                   />
                 ))}
               </>

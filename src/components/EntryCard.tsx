@@ -17,6 +17,9 @@ interface EntryCardProps {
   isFavorite: boolean;
   onToggleFavorite: (id: string) => void;
   onShowTotp?: (secret: string, issuer?: string, account?: string) => void;
+  selectionMode?: boolean;
+  onToggleSelect?: (id: string) => void;
+  onDragStart?: (e: React.DragEvent, entryId: string) => void;
 }
 
 const EntryCard = memo(function EntryCard({
@@ -30,7 +33,10 @@ const EntryCard = memo(function EntryCard({
   isSelected = false,
   isFavorite,
   onToggleFavorite,
-  onShowTotp
+  onShowTotp,
+  selectionMode = false,
+  onToggleSelect,
+  onDragStart
 }: EntryCardProps) {
   const [showMenu, setShowMenu] = useState(false);
   const [passwordStrength, setPasswordStrength] = useState<{ strength: string; score: number } | null>(null);
@@ -376,22 +382,44 @@ const EntryCard = memo(function EntryCard({
     }
   }, [showToast]);
 
+  const handleCardClick = useCallback((e: React.MouseEvent) => {
+    if (selectionMode && onToggleSelect) {
+      e.stopPropagation();
+      onToggleSelect(entry.id);
+    }
+  }, [selectionMode, onToggleSelect, entry.id]);
+
   return (
     <div
-      className={`entry-card ${isSelected ? 'selected' : ''} ${isHovered ? 'hovered' : ''}`}
+      className={`entry-card ${isSelected ? 'selected' : ''} ${isHovered ? 'hovered' : ''} ${selectionMode ? 'selection-mode' : ''}`}
       data-category={entry.category}
+      draggable={!selectionMode}
+      onDragStart={(e) => onDragStart?.(e, entry.id)}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
+      onClick={handleCardClick}
     >
       <div className="entry-card-top">
-        <button 
-          className={`favorite-button ${isFavorite ? 'active' : ''}`}
-          onClick={handleToggleFavorite}
-          title={isFavorite ? 'Favorilerden kaldır' : 'Favorilere ekle'}
-        >
-          <Star size={16} fill={isFavorite ? 'currentColor' : 'none'} />
-        </button>
-        <button 
+        {selectionMode ? (
+          <div
+            className={`selection-checkbox ${isSelected ? 'checked' : ''}`}
+            onClick={(e) => {
+              e.stopPropagation();
+              onToggleSelect?.(entry.id);
+            }}
+          >
+            {isSelected && <span>✓</span>}
+          </div>
+        ) : (
+          <button
+            className={`favorite-button ${isFavorite ? 'active' : ''}`}
+            onClick={handleToggleFavorite}
+            title={isFavorite ? 'Favorilerden kaldır' : 'Favorilere ekle'}
+          >
+            <Star size={16} fill={isFavorite ? 'currentColor' : 'none'} />
+          </button>
+        )}
+        <button
           className="menu-button"
           onClick={handleMenuToggle}
           title="Menü"

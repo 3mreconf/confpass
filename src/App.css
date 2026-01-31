@@ -1553,6 +1553,136 @@ body::before {
   box-shadow: 0 0 0 2px var(--accent), var(--shadow-glow-strong);
 }
 
+.entry-card.selection-mode {
+  cursor: pointer;
+}
+
+.entry-card.selection-mode:hover {
+  transform: translateY(-1px);
+}
+
+.entry-card[draggable="true"] {
+  cursor: grab;
+}
+
+.entry-card[draggable="true"]:active {
+  cursor: grabbing;
+}
+
+.entry-card.dragging {
+  opacity: 0.5;
+  transform: scale(0.98);
+}
+
+.selection-checkbox {
+  width: 22px;
+  height: 22px;
+  border-radius: var(--radius-sm);
+  border: 2px solid var(--border);
+  background: var(--bg-tertiary);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-smooth);
+  font-size: 12px;
+  color: white;
+}
+
+.selection-checkbox:hover {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.selection-checkbox.checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+/* Bulk Operations Bar */
+.bulk-operations-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: var(--space-md) var(--space-lg);
+  background: linear-gradient(135deg, var(--bg-secondary) 0%, var(--bg-tertiary) 100%);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-lg);
+  margin-bottom: var(--space-md);
+  animation: slideDown 0.2s ease-out;
+}
+
+@keyframes slideDown {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.bulk-operations-bar .selection-info {
+  display: flex;
+  align-items: center;
+  gap: var(--space-md);
+  color: var(--text-primary);
+  font-weight: 500;
+}
+
+.bulk-operations-bar .selection-count {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.bulk-operations-bar .bulk-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-sm);
+}
+
+.bulk-operations-bar .bulk-btn {
+  padding: var(--space-xs) var(--space-md);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  background: var(--bg-tertiary);
+  color: var(--text-primary);
+  cursor: pointer;
+  transition: all var(--duration-fast) var(--ease-smooth);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  font-size: 0.875rem;
+}
+
+.bulk-operations-bar .bulk-btn:hover {
+  border-color: var(--accent);
+  background: var(--accent-muted);
+}
+
+.bulk-operations-bar .bulk-btn.danger:hover {
+  border-color: var(--danger);
+  background: var(--danger-muted);
+  color: var(--danger);
+}
+
+.bulk-operations-bar .bulk-btn.exit {
+  background: transparent;
+  border-color: transparent;
+}
+
+.bulk-operations-bar .bulk-btn.exit:hover {
+  background: var(--bg-elevated);
+}
+
+/* Folder drop target */
+.folder-item.drag-over {
+  background: var(--accent-muted) !important;
+  border: 2px dashed var(--accent) !important;
+  transform: scale(1.02);
+}
+
 .entry-card-top {
   display: flex;
   justify-content: space-between;

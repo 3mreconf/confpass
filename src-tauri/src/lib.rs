@@ -32,12 +32,17 @@ use enigo::{Enigo, Key, Keyboard, Settings}; // Adjusting based on potential 0.2
 use std::thread; // Check version compatibility or use * for simplicity in loose binding scenario
                  // use rdev::{listen, Event, EventType, Key}; // Rdev will be used in a separate thread
 
-// DEBUG LOGGER
+// DEBUG LOGGER - Only enabled in debug builds
+#[cfg(debug_assertions)]
 fn log_to_file(msg: &str) {
+    let log_path = std::env::var("TEMP")
+        .map(|t| std::path::PathBuf::from(t).join("confpass_debug.txt"))
+        .unwrap_or_else(|_| std::path::PathBuf::from("C:\\Users\\Public\\confpass_debug.txt"));
+
     if let Ok(mut file) = fs::OpenOptions::new()
         .create(true)
         .append(true)
-        .open("C:\\Users\\Public\\confpass_debug.txt")
+        .open(&log_path)
     {
         let time = SystemTime::now()
             .duration_since(UNIX_EPOCH)
@@ -45,6 +50,20 @@ fn log_to_file(msg: &str) {
             .as_secs();
         let _ = writeln!(file, "[{}] {}", time, msg);
     }
+}
+
+#[cfg(not(debug_assertions))]
+fn log_to_file(_msg: &str) {
+    // Release build'de log yazma - güvenlik için devre dışı
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FileAttachment {
+    pub id: String,
+    pub filename: String,
+    pub mime_type: String,
+    pub size: u64,
+    pub created_at: i64,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -64,6 +83,8 @@ pub struct PasswordEntry {
     pub tags: Option<Vec<String>>,
     #[serde(default)]
     pub extra_fields: Option<HashMap<String, String>>,
+    #[serde(default)]
+    pub attachments: Option<Vec<FileAttachment>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -242,6 +263,10 @@ impl Clone for SecurePassword {
 }
 
 static MASTER_PASSWORD: Lazy<Mutex<Option<SecurePassword>>> = Lazy::new(|| Mutex::new(None));
+
+// Master Password Rotation - Bellek güvenliği için
+static MASTER_PASSWORD_SET_TIME: Lazy<Mutex<Option<SystemTime>>> = Lazy::new(|| Mutex::new(None));
+static PASSWORD_ROTATION_SECONDS: Lazy<Mutex<u64>> = Lazy::new(|| Mutex::new(0)); // 0 = devre dışı
 
 // Global AppHandle for HTTP server to emit events
 static APP_HANDLE: Lazy<Mutex<Option<tauri::AppHandle>>> = Lazy::new(|| Mutex::new(None));
@@ -488,10 +513,12 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
         use rand::rngs::OsRng;
 
         let salt = SaltString::generate(&mut OsRng);
+        let params = argon2::Params::new(65536, 3, 4, None)
+            .map_err(|e| format!("Argon2 params error: {}", e))?;
         let argon2 = Argon2::new(
             argon2::Algorithm::Argon2id,
             argon2::Version::V0x13,
-            argon2::Params::new(65536, 3, 4, None).unwrap(), // 64MB memory, 3 iterations, 4 lanes
+            params,
         );
         let hash = argon2
             .hash_password(master_password.as_bytes(), &salt)
@@ -503,8 +530,14 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
         state.last_attempt_time = None;
 
         {
-            let mut master_pwd = MASTER_PASSWORD.lock().unwrap();
+            let mut master_pwd = MASTER_PASSWORD.lock()
+                .map_err(|_| "Master password kilidi alinamadi".to_string())?;
             *master_pwd = Some(SecurePassword::new(master_password.clone()));
+        }
+
+        // Set password rotation time
+        if let Ok(mut set_time) = MASTER_PASSWORD_SET_TIME.lock() {
+            *set_time = Some(SystemTime::now());
         }
 
         let state_snapshot = VaultState {
@@ -606,9 +639,16 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
             }
 
             {
-                let mut master_pwd = MASTER_PASSWORD.lock().unwrap();
+                let mut master_pwd = MASTER_PASSWORD.lock()
+                    .map_err(|_| "Master password kilidi alinamadi".to_string())?;
                 *master_pwd = Some(SecurePassword::new(master_password.clone()));
             }
+
+            // Set password rotation time
+            if let Ok(mut set_time) = MASTER_PASSWORD_SET_TIME.lock() {
+                *set_time = Some(SystemTime::now());
+            }
+
             master_password.zeroize();
 
             // Sync passkeys.json with vault entries (remove stale passkeys)
@@ -642,7 +682,8 @@ fn lock_vault() -> Result<(), String> {
     state.entries.clear(); // [Deep Lock] Clear entries from memory when locked
 
     {
-        let mut master_pwd = MASTER_PASSWORD.lock().unwrap();
+        let mut master_pwd = MASTER_PASSWORD.lock()
+            .map_err(|_| "Master password kilidi alinamadi".to_string())?;
         if let Some(mut pwd) = master_pwd.take() {
             pwd.zeroize();
         }
@@ -745,6 +786,7 @@ fn add_password_entry(
         extra_fields,
         folder_id,
         tags: None,
+        attachments: None,
     };
 
     let entry_clone = entry.clone();
@@ -885,6 +927,59 @@ fn move_entry_to_folder(entry_id: String, folder_id: Option<String>) -> Result<(
     save_vault_to_disk(&state_snapshot, &master_pwd)?;
 
     Ok(())
+}
+
+// ========== Bulk Operations ==========
+
+#[tauri::command]
+fn bulk_delete_entries(ids: Vec<String>) -> Result<u32, String> {
+    let mut state = get_state_mut().map_err(|e| e.to_string())?;
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    let mut deleted = 0u32;
+    for id in &ids {
+        if state.entries.remove(id).is_some() {
+            deleted += 1;
+        }
+    }
+
+    if deleted > 0 {
+        let master_pwd = get_master_password()?;
+        let state_snapshot = state.clone();
+        drop(state);
+        save_vault_to_disk(&state_snapshot, &master_pwd)?;
+    }
+
+    Ok(deleted)
+}
+
+#[tauri::command]
+fn bulk_move_to_folder(ids: Vec<String>, folder_id: Option<String>) -> Result<u32, String> {
+    let mut state = get_state_mut().map_err(|e| e.to_string())?;
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    let mut moved = 0u32;
+    let now = chrono::Utc::now().timestamp();
+    for id in &ids {
+        if let Some(entry) = state.entries.get_mut(id) {
+            entry.folder_id = folder_id.clone();
+            entry.updated_at = now;
+            moved += 1;
+        }
+    }
+
+    if moved > 0 {
+        let master_pwd = get_master_password()?;
+        let state_snapshot = state.clone();
+        drop(state);
+        save_vault_to_disk(&state_snapshot, &master_pwd)?;
+    }
+
+    Ok(moved)
 }
 
 // ========== Tag Commands ==========
@@ -1731,6 +1826,313 @@ fn import_vault(json_data: String) -> Result<u32, String> {
     Ok(imported_count)
 }
 
+#[tauri::command]
+fn export_vault_encrypted(mut export_password: String) -> Result<String, String> {
+    let state = get_state().map_err(|e| e.to_string())?;
+
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    // Validate password
+    if export_password.len() < 8 {
+        export_password.zeroize();
+        return Err("Şifre en az 8 karakter olmalı".to_string());
+    }
+
+    let entries: Vec<&PasswordEntry> = state.entries.values().collect();
+    let export_data = serde_json::json!({
+        "version": "1.0",
+        "encrypted": true,
+        "exported_at": SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| format!("Time error: {}", e))?
+            .as_secs(),
+        "entry_count": entries.len(),
+        "entries": entries
+    });
+
+    let json_str = serde_json::to_string(&export_data)
+        .map_err(|e| format!("JSON error: {}", e))?;
+
+    // Generate salt and encrypt
+    let mut salt = [0u8; 32];
+    OsRng.fill_bytes(&mut salt);
+    let encrypted = encrypt_vault_data(&json_str, &export_password, &salt)?;
+
+    export_password.zeroize();
+
+    Ok(serde_json::json!({
+        "format": "confpass_encrypted_v1",
+        "salt": general_purpose::STANDARD.encode(&salt),
+        "data": encrypted
+    }).to_string())
+}
+
+#[tauri::command]
+fn import_vault_encrypted(encrypted_json: String, mut import_password: String) -> Result<u32, String> {
+    let mut state = get_state_mut().map_err(|e| e.to_string())?;
+
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    // Parse the encrypted container
+    let parsed: serde_json::Value = serde_json::from_str(&encrypted_json)
+        .map_err(|e| format!("JSON parse error: {}", e))?;
+
+    // Verify format
+    let format = parsed["format"].as_str()
+        .ok_or("Format bilgisi bulunamadi")?;
+
+    if format != "confpass_encrypted_v1" {
+        return Err("Desteklenmeyen dosya formatı".to_string());
+    }
+
+    // Get salt
+    let salt_b64 = parsed["salt"].as_str()
+        .ok_or("Salt bulunamadi")?;
+    let salt = general_purpose::STANDARD.decode(salt_b64)
+        .map_err(|e| format!("Salt decode error: {}", e))?;
+
+    // Get encrypted data
+    let encrypted_data = parsed["data"].as_str()
+        .ok_or("Encrypted data bulunamadi")?;
+
+    // Decrypt
+    let decrypted = match decrypt_vault_data(encrypted_data, &import_password, &salt) {
+        Ok(d) => d,
+        Err(_) => {
+            import_password.zeroize();
+            return Err("Şifre çözme hatası: Yanlış şifre".to_string());
+        }
+    };
+
+    import_password.zeroize();
+
+    // Parse decrypted data
+    let vault_data: serde_json::Value = serde_json::from_str(&decrypted)
+        .map_err(|e| format!("Decrypted JSON parse error: {}", e))?;
+
+    let entries: Vec<PasswordEntry> = if let Some(entries_array) = vault_data.get("entries") {
+        serde_json::from_value(entries_array.clone())
+            .map_err(|e| format!("Entries parse error: {}", e))?
+    } else {
+        return Err("Geçersiz import formatı".to_string());
+    };
+
+    let mut imported_count = 0u32;
+
+    for entry in entries {
+        if entry.id.trim().is_empty() || entry.title.trim().is_empty() {
+            continue;
+        }
+
+        if state.entries.contains_key(&entry.id) {
+            // Generate new ID for duplicate
+            let new_entry = PasswordEntry {
+                id: uuid::Uuid::new_v4().to_string(),
+                ..entry
+            };
+            state.entries.insert(new_entry.id.clone(), new_entry);
+        } else {
+            state.entries.insert(entry.id.clone(), entry);
+        }
+        imported_count += 1;
+    }
+
+    // Save to disk
+    if let Ok(master_pwd) = MASTER_PASSWORD.lock() {
+        if let Some(ref pwd) = *master_pwd {
+            if let Err(e) = save_vault_to_disk(&state, pwd.as_str()) {
+                eprintln!("Import sonrası kaydetme hatası: {}", e);
+            }
+        }
+    }
+
+    Ok(imported_count)
+}
+
+// ==================== File Attachments ====================
+
+fn get_attachments_dir() -> Result<PathBuf, String> {
+    let vault_path = get_vault_path()?;
+    let attachments_dir = vault_path
+        .parent()
+        .ok_or("Vault path parent bulunamadi")?
+        .join("attachments");
+
+    fs::create_dir_all(&attachments_dir)
+        .map_err(|e| format!("Attachments dizini oluşturulamadı: {}", e))?;
+
+    Ok(attachments_dir)
+}
+
+#[tauri::command]
+fn add_attachment(entry_id: String, file_path: String) -> Result<FileAttachment, String> {
+    let mut state = get_state_mut().map_err(|e| e.to_string())?;
+
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    // Check if entry exists
+    if !state.entries.contains_key(&entry_id) {
+        return Err(VaultError::NotFound.to_string());
+    }
+
+    // Read file
+    let content = fs::read(&file_path)
+        .map_err(|e| format!("Dosya okunamadı: {}", e))?;
+
+    // Max file size check (10MB)
+    const MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
+    if content.len() > MAX_FILE_SIZE {
+        return Err("Dosya boyutu 10MB'dan büyük olamaz".to_string());
+    }
+
+    let path = std::path::Path::new(&file_path);
+    let filename = path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("file")
+        .to_string();
+
+    // Guess mime type from extension
+    let mime_type = match path.extension().and_then(|e| e.to_str()) {
+        Some("pdf") => "application/pdf",
+        Some("png") => "image/png",
+        Some("jpg") | Some("jpeg") => "image/jpeg",
+        Some("gif") => "image/gif",
+        Some("txt") => "text/plain",
+        Some("doc") | Some("docx") => "application/msword",
+        Some("xls") | Some("xlsx") => "application/vnd.ms-excel",
+        Some("zip") => "application/zip",
+        _ => "application/octet-stream",
+    }.to_string();
+
+    // Get master password for encryption
+    let master_pwd = MASTER_PASSWORD.lock()
+        .map_err(|_| "Master password kilidi alinamadi")?;
+    let pwd = master_pwd.as_ref().ok_or("Vault kilitli")?;
+
+    // Generate salt and encrypt file content
+    let mut salt = [0u8; 32];
+    OsRng.fill_bytes(&mut salt);
+    let content_b64 = general_purpose::STANDARD.encode(&content);
+    let encrypted = encrypt_vault_data(&content_b64, pwd.as_str(), &salt)?;
+
+    // Create attachment metadata
+    let attachment = FileAttachment {
+        id: uuid::Uuid::new_v4().to_string(),
+        filename,
+        mime_type,
+        size: content.len() as u64,
+        created_at: SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|e| format!("Time error: {}", e))?
+            .as_secs() as i64,
+    };
+
+    // Save encrypted file
+    let attachments_dir = get_attachments_dir()?;
+    let att_path = attachments_dir.join(format!("{}.enc", attachment.id));
+
+    let encrypted_file_data = serde_json::json!({
+        "salt": general_purpose::STANDARD.encode(&salt),
+        "data": encrypted
+    });
+
+    fs::write(&att_path, encrypted_file_data.to_string())
+        .map_err(|e| format!("Ek kaydedilemedi: {}", e))?;
+
+    // Add attachment to entry
+    if let Some(entry) = state.entries.get_mut(&entry_id) {
+        let atts = entry.attachments.get_or_insert_with(Vec::new);
+        atts.push(attachment.clone());
+    }
+
+    // Save vault
+    save_vault_to_disk(&state, pwd.as_str())?;
+
+    Ok(attachment)
+}
+
+#[tauri::command]
+fn get_attachment(attachment_id: String) -> Result<String, String> {
+    let state = get_state().map_err(|e| e.to_string())?;
+
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    // Get master password for decryption
+    let master_pwd = MASTER_PASSWORD.lock()
+        .map_err(|_| "Master password kilidi alinamadi")?;
+    let pwd = master_pwd.as_ref().ok_or("Vault kilitli")?;
+
+    // Read encrypted file
+    let attachments_dir = get_attachments_dir()?;
+    let att_path = attachments_dir.join(format!("{}.enc", attachment_id));
+
+    let encrypted_content = fs::read_to_string(&att_path)
+        .map_err(|e| format!("Ek okunamadı: {}", e))?;
+
+    let parsed: serde_json::Value = serde_json::from_str(&encrypted_content)
+        .map_err(|e| format!("JSON parse error: {}", e))?;
+
+    let salt_b64 = parsed["salt"].as_str()
+        .ok_or("Salt bulunamadi")?;
+    let salt = general_purpose::STANDARD.decode(salt_b64)
+        .map_err(|e| format!("Salt decode error: {}", e))?;
+
+    let encrypted_data = parsed["data"].as_str()
+        .ok_or("Encrypted data bulunamadi")?;
+
+    // Decrypt
+    let decrypted_b64 = decrypt_vault_data(encrypted_data, pwd.as_str(), &salt)?;
+
+    // Return as base64 (frontend will handle download)
+    Ok(decrypted_b64)
+}
+
+#[tauri::command]
+fn delete_attachment(entry_id: String, attachment_id: String) -> Result<(), String> {
+    let mut state = get_state_mut().map_err(|e| e.to_string())?;
+
+    if state.vault_locked {
+        return Err(VaultError::Locked.to_string());
+    }
+
+    // Get master password
+    let master_pwd = MASTER_PASSWORD.lock()
+        .map_err(|_| "Master password kilidi alinamadi")?;
+    let pwd = master_pwd.as_ref().ok_or("Vault kilitli")?;
+
+    // Remove from entry
+    if let Some(entry) = state.entries.get_mut(&entry_id) {
+        if let Some(ref mut atts) = entry.attachments {
+            atts.retain(|a| a.id != attachment_id);
+        }
+    } else {
+        return Err(VaultError::NotFound.to_string());
+    }
+
+    // Delete encrypted file
+    let attachments_dir = get_attachments_dir()?;
+    let att_path = attachments_dir.join(format!("{}.enc", attachment_id));
+
+    if att_path.exists() {
+        fs::remove_file(&att_path)
+            .map_err(|e| format!("Ek dosyası silinemedi: {}", e))?;
+    }
+
+    // Save vault
+    save_vault_to_disk(&state, pwd.as_str())?;
+
+    Ok(())
+}
+
 async fn auth_middleware(
     req: axum::extract::Request,
     next: axum::middleware::Next,
@@ -2020,6 +2422,7 @@ async fn save_password_handler(
             extra_fields: None,
             folder_id: None,
             tags: None,
+            attachments: None,
         };
 
         state.entries.insert(id.clone(), entry);
@@ -2381,6 +2784,7 @@ async fn save_passkey_handler(
                 extra_fields: None,
                 folder_id: None,
                 tags: None,
+                attachments: None,
             };
 
             state.entries.insert(entry_id, entry);
@@ -3218,6 +3622,7 @@ async fn save_entry_handler(
             extra_fields: None,
             folder_id: None,
             tags: None,
+            attachments: None,
         };
 
         state.entries.insert(id.clone(), entry);
@@ -3392,6 +3797,21 @@ fn set_auto_lock_timeout(timeout: u64) -> Result<(), String> {
     state.auto_lock_timeout = if timeout > 0 { Some(timeout) } else { None };
 
     Ok(())
+}
+
+#[tauri::command]
+fn set_password_rotation_timeout(seconds: u64) -> Result<(), String> {
+    let mut timeout = PASSWORD_ROTATION_SECONDS.lock()
+        .map_err(|_| "Mutex hatasi".to_string())?;
+    *timeout = seconds;
+    Ok(())
+}
+
+#[tauri::command]
+fn get_password_rotation_timeout() -> Result<u64, String> {
+    let timeout = PASSWORD_ROTATION_SECONDS.lock()
+        .map_err(|_| "Mutex hatasi".to_string())?;
+    Ok(*timeout)
 }
 
 #[tauri::command]
@@ -3777,7 +4197,8 @@ fn reset_vault() -> Result<(), String> {
     state.last_attempt_time = None;
 
     {
-        let mut master_pwd = MASTER_PASSWORD.lock().unwrap();
+        let mut master_pwd = MASTER_PASSWORD.lock()
+            .map_err(|_| "Master password kilidi alinamadi".to_string())?;
         *master_pwd = None;
     }
 
@@ -3868,7 +4289,8 @@ fn reset_vault_with_password(mut master_password: String) -> Result<(), String> 
     state.last_attempt_time = None;
 
     {
-        let mut master_pwd = MASTER_PASSWORD.lock().unwrap();
+        let mut master_pwd = MASTER_PASSWORD.lock()
+            .map_err(|_| "Master password kilidi alinamadi".to_string())?;
         *master_pwd = None;
     }
 
@@ -4353,26 +4775,61 @@ fn start_global_shortcut_listener() {
 }
 // ========== End Auto-Type Implementation ==========
 
+// Password Rotation Timer - Bellekte tutulan şifreyi periyodik olarak sil
+fn start_password_rotation_timer() {
+    std::thread::spawn(|| {
+        loop {
+            std::thread::sleep(Duration::from_secs(60)); // Her 60 saniyede kontrol et
+
+            let timeout = match PASSWORD_ROTATION_SECONDS.lock() {
+                Ok(t) => *t,
+                Err(_) => continue,
+            };
+
+            // 0 = devre dışı
+            if timeout == 0 {
+                continue;
+            }
+
+            let should_clear = match MASTER_PASSWORD_SET_TIME.lock() {
+                Ok(set_time) => {
+                    if let Some(time) = *set_time {
+                        time.elapsed().unwrap_or_default() > Duration::from_secs(timeout)
+                    } else {
+                        false
+                    }
+                }
+                Err(_) => false,
+            };
+
+            if should_clear {
+                // Clear master password from memory
+                if let Ok(mut pwd) = MASTER_PASSWORD.lock() {
+                    if let Some(mut p) = pwd.take() {
+                        p.zeroize();
+                    }
+                }
+                // Clear set time
+                if let Ok(mut t) = MASTER_PASSWORD_SET_TIME.lock() {
+                    *t = None;
+                }
+                // Lock vault
+                if let Ok(mut state) = VAULT_STATE.lock() {
+                    state.vault_locked = true;
+                    state.entries.clear();
+                }
+                log_to_file("Password rotation: Master password cleared from memory");
+            }
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     start_global_shortcut_listener();
+    start_password_rotation_timer();
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
-        .plugin(
-            tauri_plugin_stronghold::Builder::new(|password| {
-                use argon2::password_hash::{PasswordHasher, SaltString};
-                use argon2::Argon2;
-                use rand::rngs::OsRng;
-
-                let salt = SaltString::generate(&mut OsRng);
-                let argon2 = Argon2::default();
-                argon2
-                    .hash_password(password.as_bytes(), &salt)
-                    .map(|hash| hash.to_string().into_bytes())
-                    .unwrap_or_default()
-            })
-            .build(),
-        )
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             unlock_vault,
@@ -4394,10 +4851,18 @@ pub fn run() {
             find_password_by_url,
             export_vault,
             import_vault,
+            export_vault_encrypted,
+            import_vault_encrypted,
+            // Attachment commands
+            add_attachment,
+            get_attachment,
+            delete_attachment,
             get_settings,
             set_minimize_to_tray,
             set_auto_start,
             set_auto_lock_timeout,
+            set_password_rotation_timeout,
+            get_password_rotation_timeout,
             generate_totp_code,
             generate_totp_qr_code,
             check_password_breach,
@@ -4421,6 +4886,8 @@ pub fn run() {
             update_folder,
             delete_folder,
             move_entry_to_folder,
+            bulk_delete_entries,
+            bulk_move_to_folder,
             // Tag commands
             get_tags,
             create_tag,
@@ -4466,7 +4933,9 @@ pub fn run() {
                 .items(&[&show_item, &hide_item, &quit_item])
                 .build()?;
 
-            let icon = app.default_window_icon().unwrap().clone();
+            let icon = app.default_window_icon()
+                .ok_or_else(|| "Uygulama ikonu bulunamadi".to_string())?
+                .clone();
 
             let _tray = TrayIconBuilder::new()
                 .icon(icon)
