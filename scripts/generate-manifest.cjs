@@ -15,6 +15,9 @@ async function generateManifest() {
 
     // Base search directory
     const baseDir = path.join(__dirname, '..');
+    const srcTauriDir = path.join(baseDir, 'src-tauri');
+    const targetDir = path.join(srcTauriDir, 'target');
+
     console.log(`Searching for artifacts in: ${baseDir}`);
 
     const findFiles = (dir, ext, results = []) => {
@@ -31,8 +34,8 @@ async function generateManifest() {
             if (stat.isDirectory()) {
                 findFiles(fullPath, ext, results);
             } else if (file.endsWith(ext)) {
-                // Specifically look for bundles/updater files or msi/nsis zips
-                if (fullPath.includes('bundle') || fullPath.includes('updater') || fullPath.includes('release')) {
+                // Specifically look for bundles/updater files
+                if (fullPath.includes('bundle') || fullPath.includes('updater')) {
                     results.push(fullPath);
                 }
             }
@@ -40,8 +43,14 @@ async function generateManifest() {
         return results;
     };
 
-    const sigFiles = findFiles(baseDir, '.sig');
-    const zipFiles = findFiles(baseDir, '.zip');
+    // Add specific common Tauri v2 target paths to ensure visibility
+    const commonTargetPaths = [
+        path.join(targetDir, 'release', 'bundle'),
+        path.join(targetDir, 'x86_64-pc-windows-msvc', 'release', 'bundle')
+    ];
+
+    let sigFiles = findFiles(baseDir, '.sig');
+    let zipFiles = findFiles(baseDir, '.zip');
 
     console.log(`Found signature files: ${sigFiles.map(f => path.basename(f)).join(', ')}`);
     console.log(`Found zip files: ${zipFiles.map(f => path.basename(f)).join(', ')}`);
