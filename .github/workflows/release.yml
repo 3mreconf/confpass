@@ -67,11 +67,38 @@ jobs:
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           projectPath: .
-          tagName: ${{ github.ref }}
-          releaseName: 'ConfPass ${{ env.PACKAGE_VERSION }}'
+          tagName: ${{ github.ref_name }}
+          releaseName: 'ConfPass ${{ github.ref_name }}'
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: false
           prerelease: false
           args: ${{ matrix.args }}
+
+      - name: List files (Diagnostic)
+        shell: pwsh
+        run: Get-ChildItem -Recurse src-tauri/target/
+
+      - name: Generate updater manifest
+        if: matrix.platform == 'windows-latest'
+        run: node scripts/generate-manifest.cjs
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF_NAME: ${{ github.ref_name }}
+
+      - name: Print manifest (Diagnostic)
+        if: matrix.platform == 'windows-latest'
+        run: cat latest.json
+
+      - name: Upload latest.json to release
+        if: matrix.platform == 'windows-latest'
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ github.ref_name }}
+          files: latest.json
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

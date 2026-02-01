@@ -4,6 +4,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { ArrowLeft, Power, Lock, Download, Upload, Info, ChevronDown, CheckCircle, RefreshCw, ExternalLink, AlertTriangle, Trash2, Timer } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 import packageJson from '../../package.json';
+import { useUpdateCheck } from '../hooks/useUpdateCheck';
 import './Settings.css';
 
 interface SettingsProps {
@@ -25,8 +26,6 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
   const [isTimeoutDropdownOpen, setIsTimeoutDropdownOpen] = useState(false);
   const timeoutDropdownRef = useRef<HTMLDivElement>(null);
   const [currentVersion] = useState(packageJson.version);
-  const [latestVersion, setLatestVersion] = useState<string | null>(null);
-  const [isCheckingUpdate, setIsCheckingUpdate] = useState(false);
   const [showResetDialog, setShowResetDialog] = useState(false);
   const [resetPassword, setResetPassword] = useState('');
   const [isResetting, setIsResetting] = useState(false);
@@ -43,6 +42,7 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
   const [passwordRotationTimeout, setPasswordRotationTimeout] = useState(0);
   const [isRotationDropdownOpen, setIsRotationDropdownOpen] = useState(false);
   const rotationDropdownRef = useRef<HTMLDivElement>(null);
+  const { updateInfo, checkForUpdates, downloadAndInstall, isChecking } = useUpdateCheck();
 
   const timeoutOptions = [
     { value: 60, label: '1 dakika' },
@@ -64,7 +64,6 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
 
   useEffect(() => {
     loadSettings();
-    checkForUpdates();
     loadStreamProtectionStatus();
     loadPasswordRotation();
 
@@ -98,31 +97,7 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const checkForUpdates = useCallback(async () => {
-    setIsCheckingUpdate(true);
-    try {
-      const response = await fetch('https://api.github.com/repos/3mreconf/confpass/releases/latest');
-      if (response.ok) {
-        const data = await response.json();
-        const latest = data.tag_name.replace('v', '');
-        setLatestVersion(latest);
-      }
-    } catch (error) {
-      console.error('Güncelleme kontrolü başarısız:', error);
-    } finally {
-      setIsCheckingUpdate(false);
-    }
-  }, []);
 
-  const handleUpdate = useCallback(async () => {
-    try {
-      await openUrl('https://github.com/3mreconf/confpass/releases/latest');
-      showToast('Tarayıcıda güncelleme sayfası açıldı', 'info');
-    } catch (error) {
-      showToast('Güncelleme sayfası açılamadı', 'error');
-      console.error('Update error:', error);
-    }
-  }, [showToast]);
 
   const loadSettings = useCallback(async () => {
     try {
@@ -488,7 +463,7 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
         if (url && !url.startsWith('http')) {
           parsedUrl = 'https://' + url;
         }
-      } catch {}
+      } catch { }
 
       entries.push({
         id: `entry_${crypto.randomUUID()}`,
@@ -553,7 +528,7 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
   const parseTxtVaultData = (text: string) => {
     const entries: any[] = [];
     const blocks = text.split('---');
-    
+
     for (const block of blocks) {
       const lines = block.split('\n').map(l => l.trim()).filter(l => l.length > 0);
       if (lines.length === 0) continue;
@@ -691,7 +666,7 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
             <Power size={20} />
             Uygulama Ayarları
           </h2>
-          
+
           <div className="settings-item">
             <div className="settings-item-info">
               <h3>Simge Durumuna Küçült</h3>
@@ -730,7 +705,7 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
             <Lock size={20} />
             Güvenlik Ayarları
           </h2>
-          
+
           <div className="settings-item">
             <div className="settings-item-info">
               <h3>Otomatik Kilitleme</h3>
@@ -884,7 +859,7 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
             <Download size={20} />
             Veri Yönetimi
           </h2>
-          
+
           <div className="settings-item">
             <div className="settings-item-info">
               <h3>Kasayı Dışa Aktar</h3>
@@ -939,18 +914,18 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
             <Info size={20} />
             Bilgi
           </h2>
-          
+
           <div className="settings-info-item">
             <span className="settings-info-label">Mevcut Sürüm:</span>
             <span className="settings-info-value">{currentVersion}</span>
           </div>
-          
-          {latestVersion && (
+
+          {updateInfo.latestVersion && (
             <div className="settings-info-item">
               <span className="settings-info-label">Son Sürüm:</span>
-              <span className={`settings-info-value ${latestVersion !== currentVersion ? 'update-available' : ''}`}>
-                {latestVersion}
-                {latestVersion !== currentVersion && (
+              <span className={`settings-info-value ${updateInfo.available ? 'update-available' : ''}`}>
+                {updateInfo.latestVersion}
+                {updateInfo.available && (
                   <span style={{ marginLeft: '0.5rem', color: 'var(--accent)', fontSize: '0.85rem' }}>
                     (Güncelleme mevcut)
                   </span>
@@ -958,42 +933,66 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
               </span>
             </div>
           )}
-          
+
+          {updateInfo.error && (
+            <div className="settings-info-item" style={{ color: '#ef4444', fontSize: '0.85rem' }}>
+              Hata: {updateInfo.error}
+            </div>
+          )}
+
           <div className="settings-item" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
             <div className="settings-item-info">
               <h3>Güncellemeler</h3>
-              <p>GitHub'dan son sürümü kontrol edin ve indirin</p>
+              <p>
+                {updateInfo.downloading ? 'Güncelleme indiriliyor ve kuruluyor...' :
+                  updateInfo.downloaded ? 'Güncelleme başarıyla kuruldu. Uygulama yeniden başlatılacak.' :
+                    updateInfo.available ? 'Yeni sürüm mevcut! İndirip kurmak için butona tıklayın.' :
+                      'En son sürümü kullanıyorsunuz.'}
+              </p>
             </div>
             <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <button 
-                className="settings-action-button" 
+              <button
+                className="settings-action-button"
                 onClick={checkForUpdates}
-                disabled={isCheckingUpdate}
+                disabled={isChecking || updateInfo.downloading}
                 style={{ minWidth: 'auto', padding: '0.5rem 1rem' }}
               >
-                <RefreshCw size={16} style={{ animation: isCheckingUpdate ? 'spin 1s linear infinite' : 'none' }} />
+                <RefreshCw size={16} style={{ animation: isChecking ? 'spin 1s linear infinite' : 'none' }} />
               </button>
-              {(latestVersion && latestVersion !== currentVersion) || !latestVersion ? (
-                <button className="settings-action-button" onClick={handleUpdate}>
-                  <Download size={18} />
-                  {latestVersion && latestVersion !== currentVersion ? 'Güncelle' : 'İndir'}
+              {updateInfo.available && !updateInfo.downloaded && (
+                <button
+                  className="settings-action-button"
+                  onClick={async () => {
+                    const success = await downloadAndInstall();
+                    if (!success) {
+                      showToast(updateInfo.error || 'Güncelleme başarısız', 'error');
+                    }
+                  }}
+                  disabled={updateInfo.downloading}
+                  style={{
+                    background: updateInfo.downloading ? 'rgba(59, 130, 246, 0.5)' : 'var(--accent)',
+                    cursor: updateInfo.downloading ? 'wait' : 'pointer'
+                  }}
+                >
+                  <Download size={18} style={{ animation: updateInfo.downloading ? 'pulse 1.5s ease-in-out infinite' : 'none' }} />
+                  {updateInfo.downloading ? 'İndiriliyor...' : 'İndir ve Kur'}
                 </button>
-              ) : null}
+              )}
             </div>
           </div>
-          
+
           <div className="settings-info-item" style={{ marginTop: '1rem' }}>
             <span className="settings-info-label">Geliştirici:</span>
             <span className="settings-info-value">3mreconf</span>
           </div>
-          
+
           <div className="settings-info-item">
-            <a 
-              href="https://github.com/3mreconf/confpass/releases" 
-              target="_blank" 
+            <a
+              href="https://github.com/3mreconf/confpass/releases"
+              target="_blank"
               rel="noopener noreferrer"
-              style={{ 
-                color: 'var(--accent)', 
+              style={{
+                color: 'var(--accent)',
                 textDecoration: 'none',
                 display: 'flex',
                 alignItems: 'center',

@@ -18,7 +18,7 @@ use sha2::Sha256;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::io::Write;
+use std::io::Write as _; // Required for trait methods in macros
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -515,11 +515,7 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
         let salt = SaltString::generate(&mut OsRng);
         let params = argon2::Params::new(65536, 3, 4, None)
             .map_err(|e| format!("Argon2 params error: {}", e))?;
-        let argon2 = Argon2::new(
-            argon2::Algorithm::Argon2id,
-            argon2::Version::V0x13,
-            params,
-        );
+        let argon2 = Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
         let hash = argon2
             .hash_password(master_password.as_bytes(), &salt)
             .map_err(|e| format!("Hash error: {}", e))?;
@@ -530,7 +526,8 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
         state.last_attempt_time = None;
 
         {
-            let mut master_pwd = MASTER_PASSWORD.lock()
+            let mut master_pwd = MASTER_PASSWORD
+                .lock()
                 .map_err(|_| "Master password kilidi alinamadi".to_string())?;
             *master_pwd = Some(SecurePassword::new(master_password.clone()));
         }
@@ -639,7 +636,8 @@ fn unlock_vault(mut master_password: String) -> Result<bool, String> {
             }
 
             {
-                let mut master_pwd = MASTER_PASSWORD.lock()
+                let mut master_pwd = MASTER_PASSWORD
+                    .lock()
                     .map_err(|_| "Master password kilidi alinamadi".to_string())?;
                 *master_pwd = Some(SecurePassword::new(master_password.clone()));
             }
@@ -682,7 +680,8 @@ fn lock_vault() -> Result<(), String> {
     state.entries.clear(); // [Deep Lock] Clear entries from memory when locked
 
     {
-        let mut master_pwd = MASTER_PASSWORD.lock()
+        let mut master_pwd = MASTER_PASSWORD
+            .lock()
             .map_err(|_| "Master password kilidi alinamadi".to_string())?;
         if let Some(mut pwd) = master_pwd.take() {
             pwd.zeroize();
@@ -836,7 +835,12 @@ fn get_folders() -> Result<Vec<Folder>, String> {
 }
 
 #[tauri::command]
-fn create_folder(name: String, color: String, icon: String, parent_id: Option<String>) -> Result<Folder, String> {
+fn create_folder(
+    name: String,
+    color: String,
+    icon: String,
+    parent_id: Option<String>,
+) -> Result<Folder, String> {
     let mut state = get_state_mut().map_err(|e| e.to_string())?;
     if state.vault_locked {
         return Err(VaultError::Locked.to_string());
@@ -863,19 +867,36 @@ fn create_folder(name: String, color: String, icon: String, parent_id: Option<St
 }
 
 #[tauri::command]
-fn update_folder(id: String, name: Option<String>, color: Option<String>, icon: Option<String>, order: Option<i32>) -> Result<Folder, String> {
+fn update_folder(
+    id: String,
+    name: Option<String>,
+    color: Option<String>,
+    icon: Option<String>,
+    order: Option<i32>,
+) -> Result<Folder, String> {
     let mut state = get_state_mut().map_err(|e| e.to_string())?;
     if state.vault_locked {
         return Err(VaultError::Locked.to_string());
     }
 
-    let folder = state.folders.iter_mut().find(|f| f.id == id)
+    let folder = state
+        .folders
+        .iter_mut()
+        .find(|f| f.id == id)
         .ok_or_else(|| "Klasör bulunamadı".to_string())?;
 
-    if let Some(n) = name { folder.name = n; }
-    if let Some(c) = color { folder.color = c; }
-    if let Some(i) = icon { folder.icon = i; }
-    if let Some(o) = order { folder.order = o; }
+    if let Some(n) = name {
+        folder.name = n;
+    }
+    if let Some(c) = color {
+        folder.color = c;
+    }
+    if let Some(i) = icon {
+        folder.icon = i;
+    }
+    if let Some(o) = order {
+        folder.order = o;
+    }
 
     let updated_folder = folder.clone();
 
@@ -898,7 +919,9 @@ fn delete_folder(id: String) -> Result<(), String> {
     state.folders.retain(|f| f.id != id);
 
     // Delete entries that were in this folder
-    state.entries.retain(|_, entry| entry.folder_id.as_ref() != Some(&id));
+    state
+        .entries
+        .retain(|_, entry| entry.folder_id.as_ref() != Some(&id));
 
     let master_pwd = get_master_password()?;
     let state_snapshot = state.clone();
@@ -915,7 +938,9 @@ fn move_entry_to_folder(entry_id: String, folder_id: Option<String>) -> Result<(
         return Err(VaultError::Locked.to_string());
     }
 
-    let entry = state.entries.get_mut(&entry_id)
+    let entry = state
+        .entries
+        .get_mut(&entry_id)
         .ok_or_else(|| "Kayıt bulunamadı".to_string())?;
 
     entry.folder_id = folder_id;
@@ -1047,7 +1072,9 @@ fn update_entry_tags(entry_id: String, tags: Vec<String>) -> Result<(), String> 
         return Err(VaultError::Locked.to_string());
     }
 
-    let entry = state.entries.get_mut(&entry_id)
+    let entry = state
+        .entries
+        .get_mut(&entry_id)
         .ok_or_else(|| "Kayıt bulunamadı".to_string())?;
 
     entry.tags = Some(tags);
@@ -1852,8 +1879,7 @@ fn export_vault_encrypted(mut export_password: String) -> Result<String, String>
         "entries": entries
     });
 
-    let json_str = serde_json::to_string(&export_data)
-        .map_err(|e| format!("JSON error: {}", e))?;
+    let json_str = serde_json::to_string(&export_data).map_err(|e| format!("JSON error: {}", e))?;
 
     // Generate salt and encrypt
     let mut salt = [0u8; 32];
@@ -1866,11 +1892,15 @@ fn export_vault_encrypted(mut export_password: String) -> Result<String, String>
         "format": "confpass_encrypted_v1",
         "salt": general_purpose::STANDARD.encode(&salt),
         "data": encrypted
-    }).to_string())
+    })
+    .to_string())
 }
 
 #[tauri::command]
-fn import_vault_encrypted(encrypted_json: String, mut import_password: String) -> Result<u32, String> {
+fn import_vault_encrypted(
+    encrypted_json: String,
+    mut import_password: String,
+) -> Result<u32, String> {
     let mut state = get_state_mut().map_err(|e| e.to_string())?;
 
     if state.vault_locked {
@@ -1878,11 +1908,12 @@ fn import_vault_encrypted(encrypted_json: String, mut import_password: String) -
     }
 
     // Parse the encrypted container
-    let parsed: serde_json::Value = serde_json::from_str(&encrypted_json)
-        .map_err(|e| format!("JSON parse error: {}", e))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&encrypted_json).map_err(|e| format!("JSON parse error: {}", e))?;
 
     // Verify format
-    let format = parsed["format"].as_str()
+    let format = parsed["format"]
+        .as_str()
         .ok_or("Format bilgisi bulunamadi")?;
 
     if format != "confpass_encrypted_v1" {
@@ -1890,14 +1921,13 @@ fn import_vault_encrypted(encrypted_json: String, mut import_password: String) -
     }
 
     // Get salt
-    let salt_b64 = parsed["salt"].as_str()
-        .ok_or("Salt bulunamadi")?;
-    let salt = general_purpose::STANDARD.decode(salt_b64)
+    let salt_b64 = parsed["salt"].as_str().ok_or("Salt bulunamadi")?;
+    let salt = general_purpose::STANDARD
+        .decode(salt_b64)
         .map_err(|e| format!("Salt decode error: {}", e))?;
 
     // Get encrypted data
-    let encrypted_data = parsed["data"].as_str()
-        .ok_or("Encrypted data bulunamadi")?;
+    let encrypted_data = parsed["data"].as_str().ok_or("Encrypted data bulunamadi")?;
 
     // Decrypt
     let decrypted = match decrypt_vault_data(encrypted_data, &import_password, &salt) {
@@ -1982,8 +2012,7 @@ fn add_attachment(entry_id: String, file_path: String) -> Result<FileAttachment,
     }
 
     // Read file
-    let content = fs::read(&file_path)
-        .map_err(|e| format!("Dosya okunamadı: {}", e))?;
+    let content = fs::read(&file_path).map_err(|e| format!("Dosya okunamadı: {}", e))?;
 
     // Max file size check (10MB)
     const MAX_FILE_SIZE: usize = 10 * 1024 * 1024;
@@ -2009,10 +2038,12 @@ fn add_attachment(entry_id: String, file_path: String) -> Result<FileAttachment,
         Some("xls") | Some("xlsx") => "application/vnd.ms-excel",
         Some("zip") => "application/zip",
         _ => "application/octet-stream",
-    }.to_string();
+    }
+    .to_string();
 
     // Get master password for encryption
-    let master_pwd = MASTER_PASSWORD.lock()
+    let master_pwd = MASTER_PASSWORD
+        .lock()
         .map_err(|_| "Master password kilidi alinamadi")?;
     let pwd = master_pwd.as_ref().ok_or("Vault kilitli")?;
 
@@ -2067,7 +2098,8 @@ fn get_attachment(attachment_id: String) -> Result<String, String> {
     }
 
     // Get master password for decryption
-    let master_pwd = MASTER_PASSWORD.lock()
+    let master_pwd = MASTER_PASSWORD
+        .lock()
         .map_err(|_| "Master password kilidi alinamadi")?;
     let pwd = master_pwd.as_ref().ok_or("Vault kilitli")?;
 
@@ -2075,19 +2107,18 @@ fn get_attachment(attachment_id: String) -> Result<String, String> {
     let attachments_dir = get_attachments_dir()?;
     let att_path = attachments_dir.join(format!("{}.enc", attachment_id));
 
-    let encrypted_content = fs::read_to_string(&att_path)
-        .map_err(|e| format!("Ek okunamadı: {}", e))?;
+    let encrypted_content =
+        fs::read_to_string(&att_path).map_err(|e| format!("Ek okunamadı: {}", e))?;
 
-    let parsed: serde_json::Value = serde_json::from_str(&encrypted_content)
-        .map_err(|e| format!("JSON parse error: {}", e))?;
+    let parsed: serde_json::Value =
+        serde_json::from_str(&encrypted_content).map_err(|e| format!("JSON parse error: {}", e))?;
 
-    let salt_b64 = parsed["salt"].as_str()
-        .ok_or("Salt bulunamadi")?;
-    let salt = general_purpose::STANDARD.decode(salt_b64)
+    let salt_b64 = parsed["salt"].as_str().ok_or("Salt bulunamadi")?;
+    let salt = general_purpose::STANDARD
+        .decode(salt_b64)
         .map_err(|e| format!("Salt decode error: {}", e))?;
 
-    let encrypted_data = parsed["data"].as_str()
-        .ok_or("Encrypted data bulunamadi")?;
+    let encrypted_data = parsed["data"].as_str().ok_or("Encrypted data bulunamadi")?;
 
     // Decrypt
     let decrypted_b64 = decrypt_vault_data(encrypted_data, pwd.as_str(), &salt)?;
@@ -2105,7 +2136,8 @@ fn delete_attachment(entry_id: String, attachment_id: String) -> Result<(), Stri
     }
 
     // Get master password
-    let master_pwd = MASTER_PASSWORD.lock()
+    let master_pwd = MASTER_PASSWORD
+        .lock()
         .map_err(|_| "Master password kilidi alinamadi")?;
     let pwd = master_pwd.as_ref().ok_or("Vault kilitli")?;
 
@@ -2123,8 +2155,7 @@ fn delete_attachment(entry_id: String, attachment_id: String) -> Result<(), Stri
     let att_path = attachments_dir.join(format!("{}.enc", attachment_id));
 
     if att_path.exists() {
-        fs::remove_file(&att_path)
-            .map_err(|e| format!("Ek dosyası silinemedi: {}", e))?;
+        fs::remove_file(&att_path).map_err(|e| format!("Ek dosyası silinemedi: {}", e))?;
     }
 
     // Save vault
@@ -2181,17 +2212,20 @@ fn register_native_messaging_host() -> Result<(), String> {
     use winreg::RegKey;
 
     // Get the path to the native host executable
-    let exe_path = std::env::current_exe()
-        .map_err(|e| format!("Exe path alınamadı: {}", e))?;
+    let exe_path = std::env::current_exe().map_err(|e| format!("Exe path alınamadı: {}", e))?;
 
-    let exe_dir = exe_path.parent()
+    let exe_dir = exe_path
+        .parent()
         .ok_or_else(|| "Exe dizini bulunamadı".to_string())?;
 
     let native_host_path = exe_dir.join("confpass-native-host.exe");
 
     // Check if native host exists
     if !native_host_path.exists() {
-        eprintln!("[Native Messaging] Native host bulunamadı: {:?}", native_host_path);
+        eprintln!(
+            "[Native Messaging] Native host bulunamadı: {:?}",
+            native_host_path
+        );
         return Ok(()); // Don't fail, just skip
     }
 
@@ -2257,7 +2291,11 @@ async fn start_http_server() {
         .allow_headers(Any);
 
     let router = Router::new()
-        .route("/ping", get(|| async { Json(json!({"status": "ok"})) }).post(|| async { Json(json!({"status": "ok"})) }))
+        .route(
+            "/ping",
+            get(|| async { Json(json!({"status": "ok"})) })
+                .post(|| async { Json(json!({"status": "ok"})) }),
+        )
         .route("/get_password", post(get_password_handler))
         .route("/save_password", post(save_password_handler))
         .route("/passkey_detected", post(passkey_detected_handler))
@@ -3801,7 +3839,8 @@ fn set_auto_lock_timeout(timeout: u64) -> Result<(), String> {
 
 #[tauri::command]
 fn set_password_rotation_timeout(seconds: u64) -> Result<(), String> {
-    let mut timeout = PASSWORD_ROTATION_SECONDS.lock()
+    let mut timeout = PASSWORD_ROTATION_SECONDS
+        .lock()
         .map_err(|_| "Mutex hatasi".to_string())?;
     *timeout = seconds;
     Ok(())
@@ -3809,7 +3848,8 @@ fn set_password_rotation_timeout(seconds: u64) -> Result<(), String> {
 
 #[tauri::command]
 fn get_password_rotation_timeout() -> Result<u64, String> {
-    let timeout = PASSWORD_ROTATION_SECONDS.lock()
+    let timeout = PASSWORD_ROTATION_SECONDS
+        .lock()
         .map_err(|_| "Mutex hatasi".to_string())?;
     Ok(*timeout)
 }
@@ -4197,7 +4237,8 @@ fn reset_vault() -> Result<(), String> {
     state.last_attempt_time = None;
 
     {
-        let mut master_pwd = MASTER_PASSWORD.lock()
+        let mut master_pwd = MASTER_PASSWORD
+            .lock()
             .map_err(|_| "Master password kilidi alinamadi".to_string())?;
         *master_pwd = None;
     }
@@ -4289,7 +4330,8 @@ fn reset_vault_with_password(mut master_password: String) -> Result<(), String> 
     state.last_attempt_time = None;
 
     {
-        let mut master_pwd = MASTER_PASSWORD.lock()
+        let mut master_pwd = MASTER_PASSWORD
+            .lock()
             .map_err(|_| "Master password kilidi alinamadi".to_string())?;
         *master_pwd = None;
     }
@@ -4831,6 +4873,8 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .invoke_handler(tauri::generate_handler![
             unlock_vault,
             lock_vault,
@@ -4933,7 +4977,8 @@ pub fn run() {
                 .items(&[&show_item, &hide_item, &quit_item])
                 .build()?;
 
-            let icon = app.default_window_icon()
+            let icon = app
+                .default_window_icon()
                 .ok_or_else(|| "Uygulama ikonu bulunamadi".to_string())?
                 .clone();
 

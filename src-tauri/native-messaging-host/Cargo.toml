@@ -1,6 +1,6 @@
 [package]
 name = "confpass-native-host"
-version = "1.6.6"
+version = "1.6.14"
 edition = "2021"
 
 [dependencies]

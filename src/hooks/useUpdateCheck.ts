@@ -1,11 +1,15 @@
 import { useState, useEffect, useCallback } from 'react';
+import { check } from '@tauri-apps/plugin-updater';
+import { relaunch } from '@tauri-apps/plugin-process';
 import packageJson from '../../package.json';
 
 interface UpdateInfo {
   available: boolean;
   currentVersion: string;
   latestVersion: string;
-  url: string;
+  downloading: boolean;
+  downloaded: boolean;
+  error: string | null;
 }
 
 export function useUpdateCheck() {
@@ -13,57 +17,90 @@ export function useUpdateCheck() {
     available: false,
     currentVersion: packageJson.version,
     latestVersion: '',
-    url: 'https://github.com/3mreconf/confpass/releases'
+    downloading: false,
+    downloaded: false,
+    error: null
   });
   const [isChecking, setIsChecking] = useState(false);
 
   const checkForUpdates = useCallback(async () => {
     setIsChecking(true);
-    try {
-      // Using GitHub API to check for latest release
-      const response = await fetch('https://api.github.com/repos/3mreconf/confpass/releases/latest');
-      if (response.ok) {
-        const data = await response.json();
-        const latestVersion = data.tag_name.replace('v', '');
-        const currentVersion = packageJson.version;
-        
-        // Simple version comparison
-        const isUpdateAvailable = compareVersions(currentVersion, latestVersion);
-        
-        setUpdateInfo({
-          available: isUpdateAvailable,
-          currentVersion,
-          latestVersion,
-          url: data.html_url || 'https://github.com/3mreconf/confpass/releases'
-        });
+    setUpdateInfo(prev => ({ ...prev, error: null }));
 
-        return isUpdateAvailable;
+    try {
+      const update = await check();
+
+      if (update) {
+        setUpdateInfo({
+          available: true,
+          currentVersion: update.currentVersion,
+          latestVersion: update.version,
+          downloading: false,
+          downloaded: false,
+          error: null
+        });
+        return update;
+      } else {
+        setUpdateInfo(prev => ({
+          ...prev,
+          available: false,
+          error: null
+        }));
+        return null;
       }
     } catch (error) {
       console.error('Update check failed:', error);
+      setUpdateInfo(prev => ({
+        ...prev,
+        error: String(error || 'Güncelleme kontrolü başarısız')
+      }));
+      return null;
     } finally {
       setIsChecking(false);
     }
-    return false;
   }, []);
 
-  // Helper to compare semantic versions
-  const compareVersions = (current: string, latest: string): boolean => {
-    const v1Parts = current.split('.').map(Number);
-    const v2Parts = latest.split('.').map(Number);
-    
-    for (let i = 0; i < Math.max(v1Parts.length, v2Parts.length); ++i) {
-      const v1 = v1Parts[i] || 0;
-      const v2 = v2Parts[i] || 0;
-      if (v2 > v1) return true;
-      if (v2 < v1) return false;
+  const downloadAndInstall = useCallback(async () => {
+    try {
+      setUpdateInfo(prev => ({ ...prev, downloading: true, error: null }));
+
+      const update = await check();
+      if (!update) {
+        setUpdateInfo(prev => ({
+          ...prev,
+          downloading: false,
+          error: 'Güncelleme bulunamadı'
+        }));
+        return false;
+      }
+
+      // Download and install the update
+      await update.downloadAndInstall();
+
+      setUpdateInfo(prev => ({
+        ...prev,
+        downloading: false,
+        downloaded: true
+      }));
+
+      // Relaunch the app to apply the update
+      await relaunch();
+      return true;
+    } catch (error) {
+      console.error('Update download/install failed:', error);
+      setUpdateInfo(prev => ({
+        ...prev,
+        downloading: false,
+        error: String(error || 'Güncelleme indirilemedi')
+      }));
+      return false;
     }
-    return false;
-  };
+  }, []);
 
   useEffect(() => {
     checkForUpdates();
   }, [checkForUpdates]);
 
-  return { updateInfo, checkForUpdates, isChecking };
+  return { updateInfo, checkForUpdates, downloadAndInstall, isChecking };
 }
+

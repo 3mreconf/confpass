@@ -1,4 +1,3 @@
-use serde::{Deserialize, Serialize};
 use std::env;
 use std::fs;
 use std::io::{self, Read, Write};
@@ -20,13 +19,7 @@ fn log_native(msg: &str) {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-struct NativeMessage {
-    #[serde(rename = "type")]
-    message_type: String,
-    #[serde(flatten)]
-    extra: serde_json::Value,
-}
+// Unused struct removed to fix compiler warning
 
 fn read_message() -> Result<serde_json::Value, Box<dyn std::error::Error>> {
     let mut buffer = [0u8; 4];
