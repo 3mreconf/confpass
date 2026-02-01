@@ -24,13 +24,42 @@ async function generateManifest() {
             const stat = fs.statSync(fullPath);
             if (stat.isDirectory()) {
                 // Skip some obvious ones to keep log clean but searchable
-                if (item === 'node_modules' || item === '.git' || item === '.next') continue;
+                if (item === 'node_modules' || item === '.git' || item === '.next' || item === 'target') {
+                    // But still check target/release/bundle specifically
+                    if (fullPath.includes('target') && (fullPath.endsWith('target') || fullPath.endsWith('release'))) {
+                        findFilesRecursive(fullPath);
+                    }
+                    continue;
+                }
                 findFilesRecursive(fullPath);
             } else {
                 allFiles.push(fullPath);
             }
         }
     };
+
+    // Special scan for bundle directory
+    const scanBundleDir = (dir) => {
+        if (!fs.existsSync(dir)) return;
+        console.log(`--- Tree Listing: ${dir} ---`);
+        const walk = (d, indent = '') => {
+            const items = fs.readdirSync(d);
+            items.forEach(item => {
+                const p = path.join(d, item);
+                const s = fs.statSync(p);
+                console.log(`${indent}${s.isDirectory() ? '[DIR]' : '[FILE]'} ${item}`);
+                if (s.isDirectory()) walk(p, indent + '  ');
+            });
+        };
+        walk(dir);
+    };
+
+    // Diagnostic: look for bundle dirs
+    const bundleDirs = [
+        path.join(baseDir, 'src-tauri', 'target', 'release', 'bundle'),
+        path.join(baseDir, 'src-tauri', 'target', 'x86_64-pc-windows-msvc', 'release', 'bundle')
+    ];
+    bundleDirs.forEach(scanBundleDir);
 
     findFilesRecursive(baseDir);
 
