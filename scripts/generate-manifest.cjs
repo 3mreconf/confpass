@@ -1,9 +1,8 @@
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 
 async function generateManifest() {
-    console.log('--- Starting Robust Manifest Generation ---');
+    console.log('--- Starting Exhaustive Manifest Generation ---');
 
     const version = process.env.PACKAGE_VERSION || require('../package.json').version;
     const tagName = process.env.GITHUB_REF_NAME || `v${version}`;
@@ -13,80 +12,60 @@ async function generateManifest() {
     console.log(`Tag Name: ${tagName}`);
     console.log(`Repo: ${repo}`);
 
-    // Base search directory
     const baseDir = path.join(__dirname, '..');
-    const srcTauriDir = path.join(baseDir, 'src-tauri');
-    const targetDir = path.join(srcTauriDir, 'target');
+    console.log(`Searching from: ${baseDir}`);
 
-    console.log(`Searching for artifacts in: ${baseDir}`);
-
-    const findFiles = (dir, ext, results = []) => {
-        if (!fs.existsSync(dir)) return results;
-
-        // Skip node_modules and hidden folders
-        if (dir.includes('node_modules') || path.basename(dir).startsWith('.')) return results;
-
-        const files = fs.readdirSync(dir);
-        for (const file of files) {
-            const fullPath = path.join(dir, file);
+    const allFiles = [];
+    const findFilesRecursive = (dir) => {
+        if (!fs.existsSync(dir)) return;
+        const items = fs.readdirSync(dir);
+        for (const item of items) {
+            const fullPath = path.join(dir, item);
             const stat = fs.statSync(fullPath);
-
             if (stat.isDirectory()) {
-                findFiles(fullPath, ext, results);
-            } else if (file.endsWith(ext)) {
-                // Specifically look for bundles/updater files
-                if (fullPath.includes('bundle') || fullPath.includes('updater')) {
-                    results.push(fullPath);
-                }
+                // Skip some obvious ones to keep log clean but searchable
+                if (item === 'node_modules' || item === '.git' || item === '.next') continue;
+                findFilesRecursive(fullPath);
+            } else {
+                allFiles.push(fullPath);
             }
         }
-        return results;
     };
 
-    // Add specific common Tauri v2 target paths to ensure visibility
-    const commonTargetPaths = [
-        path.join(targetDir, 'release', 'bundle'),
-        path.join(targetDir, 'x86_64-pc-windows-msvc', 'release', 'bundle')
-    ];
+    findFilesRecursive(baseDir);
 
-    let sigFiles = findFiles(baseDir, '.sig');
-    let zipFiles = findFiles(baseDir, '.zip');
+    console.log(`Total files found: ${allFiles.length}`);
 
-    console.log(`Found signature files: ${sigFiles.map(f => path.basename(f)).join(', ')}`);
-    console.log(`Found zip files: ${zipFiles.map(f => path.basename(f)).join(', ')}`);
+    const sigFiles = allFiles.filter(f => f.endsWith('.sig'));
+    const zipFiles = allFiles.filter(f => f.endsWith('.zip'));
+    const msiFiles = allFiles.filter(f => f.endsWith('.msi'));
+    const exeFiles = allFiles.filter(f => f.endsWith('.exe'));
 
-    if (sigFiles.length === 0 || zipFiles.length === 0) {
-        console.warn('⚠️ WARNING: Missing .sig or .zip files. Checking all files in release folders...');
-        // Fallback: list everything in target/release
-        const targetPath = path.join(baseDir, 'src-tauri', 'target');
-        if (fs.existsSync(targetPath)) {
-            console.log('--- Target Directory Contents (Partial) ---');
-            const list = (d, depth = 0) => {
-                if (depth > 3) return;
-                if (!fs.existsSync(d)) return;
-                fs.readdirSync(d).forEach(f => {
-                    const p = path.join(d, f);
-                    console.log(`${'  '.repeat(depth)}${f}`);
-                    if (fs.statSync(p).isDirectory()) list(p, depth + 1);
-                });
-            };
-            list(targetPath);
-        }
+    console.log('--- Artifacts Found ---');
+    console.log(`Signatures (${sigFiles.length}): ${sigFiles.map(f => path.basename(f)).join(', ')}`);
+    console.log(`ZIPs (${zipFiles.length}): ${zipFiles.map(f => path.basename(f)).join(', ')}`);
+    console.log(`MSIs (${msiFiles.length}): ${msiFiles.map(f => path.basename(f)).join(', ')}`);
+    console.log(`EXEs (${exeFiles.length}): ${exeFiles.map(f => path.basename(f)).join(', ')}`);
 
-        // If we still didn't find them, but we have an msi or nsis, maybe they aren't zipped?
-        // In Tauri 2.0, sometimes they are named differently.
-        if (sigFiles.length === 0) {
-            console.error('❌ CRITICAL ERROR: Could not find any .sig files. Build might have failed to sign.');
-            process.exit(1);
-        }
+    if (sigFiles.length > 0) {
+        console.log('--- Signature File Paths ---');
+        sigFiles.forEach(f => console.log(f));
     }
 
-    // Map signatures to their zip files
+    if (sigFiles.length === 0 || zipFiles.length === 0) {
+        console.warn('⚠️ No updater files (.sig/.zip) found! Did you set TAURI_SIGNING_PRIVATE_KEY?');
+
+        // If we found MSIs/EXEs but no ZIPs, maybe we need to zip them ourselves?
+        // But Tauri SHOULD do it.
+        process.exit(1);
+    }
+
     const platforms = {};
 
-    // We expect windows-x86_64
-    const winSig = sigFiles.find(f => f.includes('x64') || f.includes('x86_64'));
-    const winZip = zipFiles.find(f => f.includes('x64') || f.includes('x86_64'));
+    // Try to find a matching pair
+    // Windows x64
+    const winSig = sigFiles.find(f => f.includes('x64') || f.includes('x86_64') || f.includes('windows'));
+    const winZip = zipFiles.find(f => f.includes('x64') || f.includes('x86_64') || f.includes('windows'));
 
     if (winSig && winZip) {
         const signature = fs.readFileSync(winSig, 'utf8').trim();
@@ -100,7 +79,7 @@ async function generateManifest() {
     }
 
     if (Object.keys(platforms).length === 0) {
-        console.error('❌ Failed to find suitable assets for manifest.');
+        console.error('❌ Could not match signature with zip file.');
         process.exit(1);
     }
 
@@ -112,11 +91,7 @@ async function generateManifest() {
     };
 
     fs.writeFileSync('latest.json', JSON.stringify(manifest, null, 2));
-    console.log('✨ Success: latest.json generated!');
-    console.log(JSON.stringify(manifest, null, 2));
+    console.log('✨ latest.json generated successfully!');
 }
 
-generateManifest().catch(err => {
-    console.error(err);
-    process.exit(1);
-});
+generateManifest().catch(console.error);
