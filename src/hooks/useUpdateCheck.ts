@@ -1,17 +1,8 @@
 import { useState, useEffect, useCallback } from 'react';
 import { check } from '@tauri-apps/plugin-updater';
 import { relaunch } from '@tauri-apps/plugin-process';
+import { UpdateInfo } from '../types';
 import packageJson from '../../package.json';
-
-interface UpdateInfo {
-  available: boolean;
-  currentVersion: string;
-  latestVersion: string;
-  downloading: boolean;
-  downloaded: boolean;
-  error: string | null;
-  url?: string;
-}
 
 export function useUpdateCheck() {
   const [updateInfo, setUpdateInfo] = useState<UpdateInfo>({

@@ -130,3 +130,13 @@ export interface BreachInfo {
   breach_names?: string[];
   last_checked?: number;
 }
+
+export interface UpdateInfo {
+  available: boolean;
+  currentVersion: string;
+  latestVersion: string;
+  downloading?: boolean;
+  downloaded?: boolean;
+  error?: string | null;
+  url?: string;
+}

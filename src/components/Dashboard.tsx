@@ -5,19 +5,12 @@ import {
   AlertTriangle, CheckCircle, TrendingUp, Download, Settings,
   Star, ArrowRight, Lock, Fingerprint, Globe, RefreshCw
 } from 'lucide-react';
-import type { PasswordEntry } from '../types';
+import type { PasswordEntry, UpdateInfo } from '../types';
 
 interface PasswordSecurityData {
   atRisk: PasswordEntry[];
   weak: PasswordEntry[];
   total: number;
-}
-
-interface UpdateInfo {
-  available: boolean;
-  currentVersion: string;
-  latestVersion: string;
-  url?: string;
 }
 
 interface DashboardProps {
