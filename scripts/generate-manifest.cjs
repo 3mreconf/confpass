@@ -1,103 +1,113 @@
 const fs = require('fs');
 const path = require('path');
-
-// Helper to find files recursively
-function walkSync(dir, filelist = []) {
-    fs.readdirSync(dir).forEach(file => {
-        const filePath = path.join(dir, file);
-        if (fs.statSync(filePath).isDirectory()) {
-            filelist = walkSync(filePath, filelist);
-        } else {
-            filelist.push(filePath);
-        }
-    });
-    return filelist;
-}
+const crypto = require('crypto');
 
 async function generateManifest() {
-    console.log('--- Starting Manifest Generation ---');
+    console.log('--- Starting Robust Manifest Generation ---');
 
-    const packageJson = JSON.parse(fs.readFileSync('package.json', 'utf8'));
-    const version = packageJson.version;
+    const version = process.env.PACKAGE_VERSION || require('../package.json').version;
     const tagName = process.env.GITHUB_REF_NAME || `v${version}`;
-    const repo = process.env.GITHUB_REPOSITORY;
+    const repo = process.env.GITHUB_REPOSITORY || '3mreconf/confpass';
 
     console.log(`App Version: ${version}`);
     console.log(`Tag Name: ${tagName}`);
     console.log(`Repo: ${repo}`);
 
-    const targetDir = path.join('src-tauri', 'target');
-    if (!fs.existsSync(targetDir)) {
-        console.error('Target directory not found! Build might have failed.');
-        process.exit(1);
-    }
+    // Base search directory
+    const baseDir = path.join(__dirname, '..');
+    console.log(`Searching for artifacts in: ${baseDir}`);
 
-    console.log('Scanning target directory for bundles...');
-    const allFiles = walkSync(targetDir);
+    const findFiles = (dir, ext, results = []) => {
+        if (!fs.existsSync(dir)) return results;
 
-    // Tauri 2.0 Updater expects the .zip (or .msi.zip / .nsis.zip)
-    const updateFiles = allFiles.filter(f => f.endsWith('.zip') && !f.includes('target/debug'));
-    console.log('Found potential update files:', updateFiles);
+        // Skip node_modules and hidden folders
+        if (dir.includes('node_modules') || path.basename(dir).startsWith('.')) return results;
 
-    let updateFile = null;
-    let sigFile = null;
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
+            const fullPath = path.join(dir, file);
+            const stat = fs.statSync(fullPath);
 
-    // Preference: 1. .msi.zip/sig  2. .nsis.zip/sig 3. any .zip/sig
-    const msiZip = updateFiles.find(f => f.endsWith('.msi.zip'));
-    if (msiZip) {
-        updateFile = msiZip;
-        sigFile = allFiles.find(f => f === `${msiZip}.sig`);
-    }
-
-    if (!updateFile) {
-        const nsisZip = updateFiles.find(f => f.endsWith('.zip') && f.includes('bundle/nsis'));
-        if (nsisZip) {
-            updateFile = nsisZip;
-            sigFile = allFiles.find(f => f === `${nsisZip}.sig`);
-        }
-    }
-
-    if (!updateFile) {
-        const anyZip = updateFiles[0];
-        if (anyZip) {
-            updateFile = anyZip;
-            sigFile = allFiles.find(f => f === `${anyZip}.sig`);
-        }
-    }
-
-    if (!updateFile || !sigFile) {
-        console.error('Could not find a valid .zip update file and its .sig signature.');
-        console.log('Searching for any signatures...');
-        console.log(allFiles.filter(f => f.endsWith('.sig')));
-        process.exit(1);
-    }
-
-    console.log(`Chosen Update File: ${updateFile}`);
-    console.log(`Chosen Signature File: ${sigFile}`);
-
-    const signature = fs.readFileSync(sigFile, 'utf8').trim();
-    const fileName = path.basename(updateFile);
-    const downloadUrl = `https://github.com/${repo}/releases/download/${tagName}/${fileName}`;
-
-    const manifest = {
-        version: version,
-        notes: `ConfPass Release ${tagName}`,
-        pub_date: new Date().toISOString(),
-        platforms: {
-            "windows-x86_64": {
-                signature: signature,
-                url: downloadUrl
+            if (stat.isDirectory()) {
+                findFiles(fullPath, ext, results);
+            } else if (file.endsWith(ext)) {
+                // Specifically look for bundles/updater files or msi/nsis zips
+                if (fullPath.includes('bundle') || fullPath.includes('updater') || fullPath.includes('release')) {
+                    results.push(fullPath);
+                }
             }
         }
+        return results;
+    };
+
+    const sigFiles = findFiles(baseDir, '.sig');
+    const zipFiles = findFiles(baseDir, '.zip');
+
+    console.log(`Found signature files: ${sigFiles.map(f => path.basename(f)).join(', ')}`);
+    console.log(`Found zip files: ${zipFiles.map(f => path.basename(f)).join(', ')}`);
+
+    if (sigFiles.length === 0 || zipFiles.length === 0) {
+        console.warn('⚠️ WARNING: Missing .sig or .zip files. Checking all files in release folders...');
+        // Fallback: list everything in target/release
+        const targetPath = path.join(baseDir, 'src-tauri', 'target');
+        if (fs.existsSync(targetPath)) {
+            console.log('--- Target Directory Contents (Partial) ---');
+            const list = (d, depth = 0) => {
+                if (depth > 3) return;
+                if (!fs.existsSync(d)) return;
+                fs.readdirSync(d).forEach(f => {
+                    const p = path.join(d, f);
+                    console.log(`${'  '.repeat(depth)}${f}`);
+                    if (fs.statSync(p).isDirectory()) list(p, depth + 1);
+                });
+            };
+            list(targetPath);
+        }
+
+        // If we still didn't find them, but we have an msi or nsis, maybe they aren't zipped?
+        // In Tauri 2.0, sometimes they are named differently.
+        if (sigFiles.length === 0) {
+            console.error('❌ CRITICAL ERROR: Could not find any .sig files. Build might have failed to sign.');
+            process.exit(1);
+        }
+    }
+
+    // Map signatures to their zip files
+    const platforms = {};
+
+    // We expect windows-x86_64
+    const winSig = sigFiles.find(f => f.includes('x64') || f.includes('x86_64'));
+    const winZip = zipFiles.find(f => f.includes('x64') || f.includes('x86_64'));
+
+    if (winSig && winZip) {
+        const signature = fs.readFileSync(winSig, 'utf8').trim();
+        const fileName = path.basename(winZip);
+
+        platforms['windows-x86_64'] = {
+            signature,
+            url: `https://github.com/${repo}/releases/download/${tagName}/${fileName}`
+        };
+        console.log(`✅ Configured windows-x86_64 with ${fileName}`);
+    }
+
+    if (Object.keys(platforms).length === 0) {
+        console.error('❌ Failed to find suitable assets for manifest.');
+        process.exit(1);
+    }
+
+    const manifest = {
+        version,
+        notes: `Release ${tagName}`,
+        pub_date: new Date().toISOString(),
+        platforms
     };
 
     fs.writeFileSync('latest.json', JSON.stringify(manifest, null, 2));
-    console.log('--- ✅ latest.json generated successfully ---');
+    console.log('✨ Success: latest.json generated!');
     console.log(JSON.stringify(manifest, null, 2));
 }
 
 generateManifest().catch(err => {
-    console.error('--- ❌ Manifest Generation Failed ---');
     console.error(err);
     process.exit(1);
 });
