@@ -10,6 +10,7 @@ interface UpdateInfo {
   downloading: boolean;
   downloaded: boolean;
   error: string | null;
+  url?: string;
 }
 
 export function useUpdateCheck() {

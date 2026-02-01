@@ -18,7 +18,6 @@ use sha2::Sha256;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
-use std::io::Write as _; // Required for trait methods in macros
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};

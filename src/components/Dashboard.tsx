@@ -17,7 +17,7 @@ interface UpdateInfo {
   available: boolean;
   currentVersion: string;
   latestVersion: string;
-  url: string;
+  url?: string;
 }
 
 interface DashboardProps {
@@ -134,13 +134,13 @@ export default function Dashboard({
 
       {/* Update Alert */}
       {updateInfo?.available && (
-        <div className="dashboard-alert update-alert" onClick={handleUpdate} style={{ 
+        <div className="dashboard-alert update-alert" onClick={handleUpdate} style={{
           background: 'linear-gradient(135deg, rgba(59, 130, 246, 0.15), rgba(37, 99, 235, 0.05))',
           borderColor: 'rgba(59, 130, 246, 0.3)',
           cursor: 'pointer',
           marginBottom: '1.5rem'
         }}>
-          <div className="alert-icon" style={{ 
+          <div className="alert-icon" style={{
             background: 'rgba(59, 130, 246, 0.2)',
             color: '#3b82f6'
           }}>
