@@ -3,7 +3,7 @@ members = ["native-messaging-host"]
 
 [package]
 name = "confpass"
-version = "1.6.29"
+version = "1.6.30"
 description = "Modern Password Manager by emreconf"
 authors = ["emreconf"]
 edition = "2021"

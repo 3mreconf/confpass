@@ -2206,26 +2206,46 @@ async fn generate_and_save_auth_token() -> Result<(), String> {
     Ok(())
 }
 
-fn register_native_messaging_host() -> Result<(), String> {
+fn register_native_messaging_host(app_handle: &tauri::AppHandle) -> Result<(), String> {
+    use std::path::PathBuf;
     use winreg::enums::*;
     use winreg::RegKey;
 
     // Get the path to the native host executable
     let exe_path = std::env::current_exe().map_err(|e| format!("Exe path alınamadı: {}", e))?;
 
+    // 1. Check same directory as EXE (for development)
     let exe_dir = exe_path
         .parent()
         .ok_or_else(|| "Exe dizini bulunamadı".to_string())?;
+    let mut native_host_path = exe_dir.join("confpass-native-host.exe");
 
-    let native_host_path = exe_dir.join("confpass-native-host.exe");
+    // 2. If not found, check Tauri's resource directory (for production)
+    if !native_host_path.exists() {
+        if let Ok(resource_dir) = app_handle.path().resource_dir() {
+            let prod_path = resource_dir
+                .join("target")
+                .join("release")
+                .join("confpass-native-host.exe");
+            if prod_path.exists() {
+                native_host_path = prod_path;
+            } else {
+                // Also check direct resource dir (some installers flatten structure)
+                let flat_prod_path = resource_dir.join("confpass-native-host.exe");
+                if flat_prod_path.exists() {
+                    native_host_path = flat_prod_path;
+                }
+            }
+        }
+    }
 
-    // Check if native host exists
+    // Check if native host reached successfully
     if !native_host_path.exists() {
         eprintln!(
-            "[Native Messaging] Native host bulunamadı: {:?}",
-            native_host_path
+            "[Native Messaging ERROR] Native host bulunamadı! Aranan konumlar: {:?}, ResourceDir...",
+            exe_path.parent().unwrap_or(&PathBuf::from("."))
         );
-        return Ok(()); // Don't fail, just skip
+        return Ok(()); // Don't crash, just skip
     }
 
     // Create manifest JSON
@@ -2235,7 +2255,9 @@ fn register_native_messaging_host() -> Result<(), String> {
         "path": native_host_path.to_string_lossy().replace("/", "\\"),
         "type": "stdio",
         "allowed_origins": [
-            "chrome-extension://hhaieidomjambbcgconfnefkpffjoeoa/"
+            "chrome-extension://hhaieidomjambbcgconfnefkpffjoeoa/",
+            "chrome-extension://dgajmfnokhkpkclgecplmfhhmjjccpck/",  // Local dev ID 1
+            "chrome-extension://okicldcjhkfkicnbimckhfndkbbofclh/"   // Local dev ID 2
         ]
     });
 
@@ -5035,7 +5057,7 @@ pub fn run() {
                 .build(app)?;
 
             // Register native messaging host for browser extension
-            if let Err(e) = register_native_messaging_host() {
+            if let Err(e) = register_native_messaging_host(&app_handle) {
                 eprintln!("Failed to register native messaging host: {}", e);
             }
 

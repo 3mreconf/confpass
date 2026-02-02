@@ -118,7 +118,11 @@ fn proxy_to_server(message: &serde_json::Value) -> serde_json::Value {
     log_native(&format!("Proxying to: {}", url));
     // log_native(&format!("Using token: {:?}", token)); // Mask in production if needed
 
-    let client = reqwest::blocking::Client::new();
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap_or_else(|_| reqwest::blocking::Client::new());
+
     let response = client
         .post(&url)
         .header("Authorization", token.unwrap())
@@ -132,11 +136,19 @@ fn proxy_to_server(message: &serde_json::Value) -> serde_json::Value {
                 resp.json::<serde_json::Value>()
                     .unwrap_or_else(|_| serde_json::json!({ "success": true }))
             } else {
-                serde_json::json!({ "success": false, "error": format!("HTTP {}", resp.status()) })
+                let status = resp.status();
+                let err_msg = format!("HTTP Error: {}", status);
+                log_native(&err_msg);
+                serde_json::json!({ "success": false, "error": err_msg })
             }
         }
         Err(e) => {
-            serde_json::json!({ "success": false, "error": format!("Connection failed: {}", e) })
+            let err_msg = format!(
+                "Connection to App failed: {}. Make sure ConfPass is running.",
+                e
+            );
+            log_native(&err_msg);
+            serde_json::json!({ "success": false, "error": err_msg })
         }
     }
 }
