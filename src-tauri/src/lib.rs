@@ -2294,11 +2294,25 @@ fn register_native_messaging_host(app_handle: &tauri::AppHandle) -> Result<(), S
     }
     log_debug(&format!("FOUND Native Host at: {:?}", native_host_path));
 
+    // CRITICAL: Strip the \\?\ UNC prefix from the path for Chrome compatibility
+    let native_host_path_str = native_host_path.to_string_lossy().to_string();
+    let clean_path = if native_host_path_str.starts_with(r"\\?\") {
+        log_debug("Stripping \\\\?\\ prefix from path");
+        native_host_path_str[4..].to_string()
+    } else {
+        native_host_path_str
+    };
+    let final_native_host_path = clean_path.replace("/", "\\");
+    log_debug(&format!(
+        "Final Path for Manifest: {}",
+        final_native_host_path
+    ));
+
     // Create manifest JSON
     let manifest = serde_json::json!({
         "name": "com.confpass.password",
         "description": "ConfPass Password Manager Native Messaging Host",
-        "path": native_host_path.to_string_lossy().replace("/", "\\"),
+        "path": final_native_host_path,
         "type": "stdio",
         "allowed_origins": [
             "chrome-extension://hhaieidomjambbcgconfnefkpffjoeoa/",
