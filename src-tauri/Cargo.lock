@@ -927,7 +927,7 @@ dependencies = [
 
 [[package]]
 name = "confpass"
-version = "1.6.25"
+version = "1.6.26"
 dependencies = [
  "active-win-pos-rs",
  "aes-gcm",
@@ -969,7 +969,7 @@ dependencies = [
 
 [[package]]
 name = "confpass-native-host"
-version = "1.6.25"
+version = "1.6.26"
 dependencies = [
  "once_cell",
  "reqwest",
