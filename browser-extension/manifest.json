@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "ConfPass Password Manager",
-  "version": "1.6.5",
+  "version": "1.7",
   "description": "Güvenli şifre yöneticisi tarayıcı eklentisi",
   "author": "emreconf",
   "permissions": [

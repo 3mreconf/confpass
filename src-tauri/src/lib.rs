@@ -3576,11 +3576,16 @@ async fn check_duplicate_handler(
 
         let category = payload
             .get("category")
+            .or_else(|| payload.get("type"))
             .and_then(|v| v.as_str())
             .unwrap_or("");
         let url = payload.get("url").and_then(|v| v.as_str()).unwrap_or("");
         let username = payload
             .get("username")
+            .and_then(|v| v.as_str())
+            .unwrap_or("");
+        let password = payload
+            .get("password")
             .and_then(|v| v.as_str())
             .unwrap_or("");
         let card_number = payload
@@ -3592,14 +3597,34 @@ async fn check_duplicate_handler(
 
         let exists = match category {
             "accounts" => state.entries.values().any(|entry| {
-                entry.category == "accounts"
-                    && entry.username.to_lowercase() == username.to_lowercase()
-                    && entry.url.as_ref().map_or(false, |entry_url| {
-                        let entry_domain = extract_domain(&entry_url.to_lowercase());
-                        url_domain.as_ref().map_or(false, |ud| {
-                            entry_domain.as_ref().map_or(false, |ed| ed == ud)
+                if entry.category != "accounts" {
+                    return false;
+                }
+
+                // Match username (case-insensitive)
+                let username_match = entry.username.to_lowercase() == username.to_lowercase();
+                if !username_match {
+                    return false;
+                }
+
+                // Match password (exact)
+                let password_match = entry.password == password;
+                if !password_match {
+                    return false;
+                }
+
+                // Match domain (smarter check)
+                entry.url.as_ref().map_or(false, |entry_url| {
+                    let entry_domain = extract_domain(&entry_url.to_lowercase());
+                    url_domain.as_ref().map_or(false, |ud| {
+                        entry_domain.as_ref().map_or(false, |ed| {
+                            // Exact match or subdomain match
+                            ed == ud
+                                || ed.ends_with(&format!(".{}", ud))
+                                || ud.ends_with(&format!(".{}", ed))
                         })
                     })
+                })
             }),
             "bank_cards" => {
                 let clean_card = card_number.replace(" ", "").replace("-", "");
