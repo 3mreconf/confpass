@@ -4,7 +4,6 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { ArrowLeft, Power, Lock, Download, Upload, Info, ChevronDown, CheckCircle, RefreshCw, ExternalLink, AlertTriangle, Trash2, Timer } from 'lucide-react';
 import { listen } from '@tauri-apps/api/event';
 import packageJson from '../../package.json';
-import { useUpdateCheck } from '../hooks/useUpdateCheck';
 import './Settings.css';
 
 interface SettingsProps {
@@ -42,7 +41,6 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
   const [passwordRotationTimeout, setPasswordRotationTimeout] = useState(0);
   const [isRotationDropdownOpen, setIsRotationDropdownOpen] = useState(false);
   const rotationDropdownRef = useRef<HTMLDivElement>(null);
-  const { updateInfo, checkForUpdates, downloadAndInstall, isChecking } = useUpdateCheck();
 
   const timeoutOptions = [
     { value: 60, label: '1 dakika' },
@@ -920,66 +918,6 @@ function Settings({ onBack, showToast, onResetComplete }: SettingsProps) {
             <span className="settings-info-value">{currentVersion}</span>
           </div>
 
-          {updateInfo.latestVersion && (
-            <div className="settings-info-item">
-              <span className="settings-info-label">Son Sürüm:</span>
-              <span className={`settings-info-value ${updateInfo.available ? 'update-available' : ''}`}>
-                {updateInfo.latestVersion}
-                {updateInfo.available && (
-                  <span style={{ marginLeft: '0.5rem', color: 'var(--accent)', fontSize: '0.85rem' }}>
-                    (Güncelleme mevcut)
-                  </span>
-                )}
-              </span>
-            </div>
-          )}
-
-          {updateInfo.error && (
-            <div className="settings-info-item" style={{ color: '#ef4444', fontSize: '0.85rem' }}>
-              Hata: {updateInfo.error}
-            </div>
-          )}
-
-          <div className="settings-item" style={{ marginTop: '1rem', paddingTop: '1rem', borderTop: '1px solid var(--border)' }}>
-            <div className="settings-item-info">
-              <h3>Güncellemeler</h3>
-              <p>
-                {updateInfo.downloading ? 'Güncelleme indiriliyor ve kuruluyor...' :
-                  updateInfo.downloaded ? 'Güncelleme başarıyla kuruldu. Uygulama yeniden başlatılacak.' :
-                    updateInfo.available ? 'Yeni sürüm mevcut! İndirip kurmak için butona tıklayın.' :
-                      'En son sürümü kullanıyorsunuz.'}
-              </p>
-            </div>
-            <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
-              <button
-                className="settings-action-button"
-                onClick={checkForUpdates}
-                disabled={isChecking || updateInfo.downloading}
-                style={{ minWidth: 'auto', padding: '0.5rem 1rem' }}
-              >
-                <RefreshCw size={16} style={{ animation: isChecking ? 'spin 1s linear infinite' : 'none' }} />
-              </button>
-              {updateInfo.available && !updateInfo.downloaded && (
-                <button
-                  className="settings-action-button"
-                  onClick={async () => {
-                    const success = await downloadAndInstall();
-                    if (!success) {
-                      showToast(updateInfo.error || 'Güncelleme başarısız', 'error');
-                    }
-                  }}
-                  disabled={updateInfo.downloading}
-                  style={{
-                    background: updateInfo.downloading ? 'rgba(59, 130, 246, 0.5)' : 'var(--accent)',
-                    cursor: updateInfo.downloading ? 'wait' : 'pointer'
-                  }}
-                >
-                  <Download size={18} style={{ animation: updateInfo.downloading ? 'pulse 1.5s ease-in-out infinite' : 'none' }} />
-                  {updateInfo.downloading ? 'İndiriliyor...' : 'İndir ve Kur'}
-                </button>
-              )}
-            </div>
-          </div>
 
           <div className="settings-info-item" style={{ marginTop: '1rem' }}>
             <span className="settings-info-label">Geliştirici:</span>

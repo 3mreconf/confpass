@@ -70,22 +70,9 @@ jobs:
           $version = (Get-Content package.json | ConvertFrom-Json).version
           echo "PACKAGE_VERSION=$version" >> $env:GITHUB_ENV
 
-      - name: Signing Sanity Check
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrEmpty("${{ secrets.TAURI_PRIVATE_KEY }}")) {
-            Write-Error "SECRET 'TAURI_PRIVATE_KEY' IS MISSING!"
-          } else {
-            Write-Host "TAURI_PRIVATE_KEY secret is present."
-          }
-
       - uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           projectPath: .
           tagName: ${{ github.ref_name }}
@@ -93,33 +80,4 @@ jobs:
           releaseBody: 'See the assets to download this version and install.'
           releaseDraft: false
           prerelease: false
-          args: ${{ matrix.args }} --verbose
-
-      - name: List files (Diagnostic)
-        shell: pwsh
-        run: |
-          Write-Host "--- Scanning for artifacts ---"
-          Get-ChildItem -Path . -Include *.sig, *.zip, *.msi, *.exe -Recurse | Select-Object FullName
-
-      - name: Generate updater manifest
-        if: matrix.platform == 'windows-latest'
-        run: node scripts/generate-manifest.cjs
-        env:
-          GITHUB_REPOSITORY: ${{ github.repository }}
-          GITHUB_REF_NAME: ${{ github.ref_name }}
-          PACKAGE_VERSION: ${{ env.PACKAGE_VERSION }}
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
-
-      - name: Print manifest (Diagnostic)
-        if: matrix.platform == 'windows-latest'
-        run: cat latest.json
-
-      - name: Upload latest.json to release
-        if: matrix.platform == 'windows-latest'
-        uses: softprops/action-gh-release@v1
-        with:
-          tag_name: ${{ github.ref_name }}
-          files: latest.json
-          fail_on_unmatched_files: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          args: ${{ matrix.args }}
