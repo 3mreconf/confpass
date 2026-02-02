@@ -2207,46 +2207,92 @@ async fn generate_and_save_auth_token() -> Result<(), String> {
 }
 
 fn register_native_messaging_host(app_handle: &tauri::AppHandle) -> Result<(), String> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
     use std::path::PathBuf;
     use winreg::enums::*;
     use winreg::RegKey;
 
+    let log_debug = |msg: &str| {
+        if let Ok(mut file) = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("C:\\Users\\Public\\confpass_native_debug.log")
+        {
+            let _ = writeln!(file, "[{}] {}", chrono::Local::now(), msg);
+        }
+    };
+
+    log_debug("--- Native Messaging Registration Started ---");
+
     // Get the path to the native host executable
-    let exe_path = std::env::current_exe().map_err(|e| format!("Exe path alınamadı: {}", e))?;
+    let exe_path = match std::env::current_exe() {
+        Ok(p) => p,
+        Err(e) => {
+            log_debug(&format!("ERROR: Exe path alınamadı: {}", e));
+            return Err(format!("Exe path alınamadı: {}", e));
+        }
+    };
+    log_debug(&format!("Current EXE: {:?}", exe_path));
 
     // 1. Check same directory as EXE (for development)
     let exe_dir = exe_path
         .parent()
         .ok_or_else(|| "Exe dizini bulunamadı".to_string())?;
     let mut native_host_path = exe_dir.join("confpass-native-host.exe");
+    log_debug(&format!("Checking Dev Path: {:?}", native_host_path));
 
     // 2. If not found, check Tauri's resource directory (for production)
     if !native_host_path.exists() {
+        log_debug("Dev path not found, checking resources...");
         if let Ok(resource_dir) = app_handle.path().resource_dir() {
+            log_debug(&format!("Resource Dir: {:?}", resource_dir));
+
+            // Try standard tauri bundle path
             let prod_path: PathBuf = resource_dir
                 .join("target")
                 .join("release")
                 .join("confpass-native-host.exe");
+            log_debug(&format!("Checking Prod Path 1: {:?}", prod_path));
+
             if prod_path.exists() {
                 native_host_path = prod_path;
             } else {
-                // Also check direct resource dir (some installers flatten structure)
+                // Try flat resource dir
                 let flat_prod_path: PathBuf = resource_dir.join("confpass-native-host.exe");
+                log_debug(&format!(
+                    "Checking Prod Path 2 (flat): {:?}",
+                    flat_prod_path
+                ));
                 if flat_prod_path.exists() {
                     native_host_path = flat_prod_path;
+                } else {
+                    // Try resources/_up_/ structure
+                    let up_path: PathBuf = resource_dir
+                        .join("_up_")
+                        .join("target")
+                        .join("release")
+                        .join("confpass-native-host.exe");
+                    log_debug(&format!("Checking Prod Path 3 (_up_): {:?}", up_path));
+                    if up_path.exists() {
+                        native_host_path = up_path;
+                    }
                 }
             }
+        } else {
+            log_debug("ERROR: resource_dir could not be resolved");
         }
     }
 
     // Check if native host reached successfully
     if !native_host_path.exists() {
-        eprintln!(
-            "[Native Messaging ERROR] Native host bulunamadı! Aranan konumlar: {:?}, ResourceDir...",
-            exe_path.parent().unwrap_or(&PathBuf::from("."))
-        );
+        let err_msg =
+            format!("[Native Messaging ERROR] Native host bulunamadı! Aranan konumlar bitti.");
+        log_debug(&err_msg);
+        eprintln!("{}", err_msg);
         return Ok(()); // Don't crash, just skip
     }
+    log_debug(&format!("FOUND Native Host at: {:?}", native_host_path));
 
     // Create manifest JSON
     let manifest = serde_json::json!({
@@ -2256,8 +2302,8 @@ fn register_native_messaging_host(app_handle: &tauri::AppHandle) -> Result<(), S
         "type": "stdio",
         "allowed_origins": [
             "chrome-extension://hhaieidomjambbcgconfnefkpffjoeoa/",
-            "chrome-extension://dgajmfnokhkpkclgecplmfhhmjjccpck/",  // Local dev ID 1
-            "chrome-extension://okicldcjhkfkicnbimckhfndkbbofclh/"   // Local dev ID 2
+            "chrome-extension://dgajmfnokhkpkclgecplmfhhmjjccpck/",
+            "chrome-extension://okicldcjhkfkicnbimckhfndkbbofclh/"
         ]
     });
 
@@ -2266,14 +2312,19 @@ fn register_native_messaging_host(app_handle: &tauri::AppHandle) -> Result<(), S
         .parent()
         .ok_or_else(|| "App data dizini bulunamadı".to_string())?
         .to_path_buf();
+    log_debug(&format!("Manifest Target Dir: {:?}", app_data));
 
     let manifest_path = app_data.join("com.confpass.password.json");
-
     let manifest_str = serde_json::to_string_pretty(&manifest)
         .map_err(|e| format!("Manifest JSON oluşturulamadı: {}", e))?;
 
-    fs::write(&manifest_path, &manifest_str)
-        .map_err(|e| format!("Manifest dosyası yazılamadı: {}", e))?;
+    match fs::write(&manifest_path, &manifest_str) {
+        Ok(_) => log_debug(&format!("SUCCESS: Manifest written to {:?}", manifest_path)),
+        Err(e) => {
+            log_debug(&format!("ERROR: Manifest yazılamadı: {}", e));
+            return Err(format!("Manifest dosyası yazılamadı: {}", e));
+        }
+    }
 
     let manifest_path_str = manifest_path.to_string_lossy().replace("/", "\\");
 
@@ -2282,7 +2333,9 @@ fn register_native_messaging_host(app_handle: &tauri::AppHandle) -> Result<(), S
         .create_subkey("Software\\Google\\Chrome\\NativeMessagingHosts\\com.confpass.password")
     {
         let _ = hkcu.0.set_value("", &manifest_path_str);
-        eprintln!("[Native Messaging] Chrome için kaydedildi");
+        log_debug("SUCCESS: Registered in Chrome Registry");
+    } else {
+        log_debug("ERROR: Failed to create Chrome registry key");
     }
 
     // Register for Edge
@@ -2290,18 +2343,10 @@ fn register_native_messaging_host(app_handle: &tauri::AppHandle) -> Result<(), S
         .create_subkey("Software\\Microsoft\\Edge\\NativeMessagingHosts\\com.confpass.password")
     {
         let _ = hkcu.0.set_value("", &manifest_path_str);
-        eprintln!("[Native Messaging] Edge için kaydedildi");
+        log_debug("SUCCESS: Registered in Edge Registry");
     }
 
-    // Register for Chromium
-    if let Ok(hkcu) = RegKey::predef(HKEY_CURRENT_USER)
-        .create_subkey("Software\\Chromium\\NativeMessagingHosts\\com.confpass.password")
-    {
-        let _ = hkcu.0.set_value("", &manifest_path_str);
-        eprintln!("[Native Messaging] Chromium için kaydedildi");
-    }
-
-    eprintln!("[Native Messaging] Kayıt tamamlandı: {:?}", manifest_path);
+    log_debug("--- Native Messaging Registration Finished ---");
     Ok(())
 }
 
