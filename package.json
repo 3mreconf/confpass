@@ -1,7 +1,7 @@
 {
   "name": "confpass",
   "private": true,
-  "version": "1.6.30",
+  "version": "1.6.31",
   "type": "module",
   "dependencies": {
     "@tauri-apps/api": "^2",

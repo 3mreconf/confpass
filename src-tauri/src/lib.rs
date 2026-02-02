@@ -21,7 +21,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 use tower_http::cors::{Any, CorsLayer};
 use zeroize::{Zeroize, ZeroizeOnDrop};
 // Auto-Type Dependencies
@@ -2223,7 +2223,7 @@ fn register_native_messaging_host(app_handle: &tauri::AppHandle) -> Result<(), S
     // 2. If not found, check Tauri's resource directory (for production)
     if !native_host_path.exists() {
         if let Ok(resource_dir) = app_handle.path().resource_dir() {
-            let prod_path = resource_dir
+            let prod_path: PathBuf = resource_dir
                 .join("target")
                 .join("release")
                 .join("confpass-native-host.exe");
@@ -2231,7 +2231,7 @@ fn register_native_messaging_host(app_handle: &tauri::AppHandle) -> Result<(), S
                 native_host_path = prod_path;
             } else {
                 // Also check direct resource dir (some installers flatten structure)
-                let flat_prod_path = resource_dir.join("confpass-native-host.exe");
+                let flat_prod_path: PathBuf = resource_dir.join("confpass-native-host.exe");
                 if flat_prod_path.exists() {
                     native_host_path = flat_prod_path;
                 }
