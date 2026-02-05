@@ -18,6 +18,7 @@ use sha2::Sha256;
 use std::collections::HashMap;
 use std::env;
 use std::fs;
+use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -2315,6 +2316,7 @@ fn register_native_messaging_host(app_handle: &tauri::AppHandle) -> Result<(), S
         "path": final_native_host_path,
         "type": "stdio",
         "allowed_origins": [
+            "chrome-extension://cmaddhojekgkmkihchnpmilnamiflmeb/",
             "chrome-extension://hhaieidomjambbcgconfnefkpffjoeoa/",
             "chrome-extension://dgajmfnokhkpkclgecplmfhhmjjccpck/",
             "chrome-extension://okicldcjhkfkicnbimckhfndkbbofclh/"

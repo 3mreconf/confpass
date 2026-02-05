@@ -418,7 +418,7 @@
       width: 100% !important;
       height: 100% !important;
       background: rgba(5, 5, 7, 0.85) !important;
-      backdrop-filter: blur(12px) !important;
+      backdrop-filter: blur(8px) !important;
       z-index: 2147483647 !important;
       display: flex !important;
       align-items: center !important;
@@ -986,7 +986,6 @@
     const iconBtn = document.createElement('button');
     iconBtn.className = 'confpass-icon-btn';
     iconBtn.type = 'button';
-    field.confpassButton = iconBtn;
     iconBtn.innerHTML = `
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
@@ -1034,7 +1033,7 @@
         <span class="confpass-dropdown-title">ConfPass</span>
       </div>
       <div class="confpass-dropdown-list">
-        <div class="confpass-dropdown-empty">Yükleniyor...</div>
+        <div class="confpass-dropdown-empty">Yukleniyor...</div>
       </div>
     `;
 
@@ -1151,7 +1150,7 @@
         </svg>
         <div class="confpass-dropdown-locked-text">Kasa kilitli</div>
         <button class="confpass-dropdown-btn" id="confpass-open-app">
-          Uygulamayı Aç
+          Uygulamayi Ac
         </button>
       </div>
     `;
@@ -1931,21 +1930,6 @@
         }
       }
     }, true);
-
-    // Keyboard shortcut: Ctrl+Shift+L to open dropdown on focused field
-    document.addEventListener('keydown', (e) => {
-      if (e.ctrlKey && e.shiftKey && e.key && e.key.toLowerCase() === 'l') {
-        const active = document.activeElement;
-        if (active && active.tagName === 'INPUT') {
-          addIconToField(active);
-          if (active.confpassButton) {
-            active.confpassButton.click();
-          } else {
-            showDropdownForField(active);
-          }
-        }
-      }
-    }, true);
   }
 
   // ========== Message Listener ==========
@@ -1990,8 +1974,96 @@
       sendResponse({ success: true });
     }
 
+    // Phishing warning from background
+    if (message.type === 'phishing_warning') {
+      showPhishingWarning(message.result);
+      sendResponse({ success: true });
+    }
+
     return true;
   });
+
+  // ========== Phishing Warning Banner ==========
+  function showPhishingWarning(result) {
+    // Don't show if already exists
+    if (document.getElementById('confpass-phishing-banner')) return;
+
+    const banner = document.createElement('div');
+    banner.id = 'confpass-phishing-banner';
+    banner.innerHTML = `
+      <style>
+        #confpass-phishing-banner {
+          position: fixed !important;
+          top: 0 !important;
+          left: 0 !important;
+          right: 0 !important;
+          z-index: 2147483647 !important;
+          background: linear-gradient(135deg, #dc2626 0%, #991b1b 100%) !important;
+          color: white !important;
+          padding: 16px 20px !important;
+          font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif !important;
+          box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3) !important;
+          animation: confpass-slide-down 0.3s ease !important;
+        }
+        @keyframes confpass-slide-down {
+          from { transform: translateY(-100%); }
+          to { transform: translateY(0); }
+        }
+        #confpass-phishing-banner .banner-content {
+          max-width: 1200px !important;
+          margin: 0 auto !important;
+          display: flex !important;
+          align-items: center !important;
+          gap: 16px !important;
+        }
+        #confpass-phishing-banner .banner-icon {
+          width: 32px !important;
+          height: 32px !important;
+          flex-shrink: 0 !important;
+        }
+        #confpass-phishing-banner .banner-text {
+          flex: 1 !important;
+        }
+        #confpass-phishing-banner .banner-title {
+          font-size: 16px !important;
+          font-weight: 700 !important;
+          margin: 0 0 4px 0 !important;
+        }
+        #confpass-phishing-banner .banner-subtitle {
+          font-size: 13px !important;
+          opacity: 0.9 !important;
+          margin: 0 !important;
+        }
+        #confpass-phishing-banner .banner-close {
+          background: rgba(255,255,255,0.2) !important;
+          border: none !important;
+          color: white !important;
+          padding: 8px 16px !important;
+          border-radius: 6px !important;
+          cursor: pointer !important;
+          font-size: 13px !important;
+          font-weight: 600 !important;
+          transition: background 0.2s !important;
+        }
+        #confpass-phishing-banner .banner-close:hover {
+          background: rgba(255,255,255,0.3) !important;
+        }
+      </style>
+      <div class="banner-content">
+        <svg class="banner-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+          <line x1="12" y1="9" x2="12" y2="13"/>
+          <line x1="12" y1="17" x2="12.01" y2="17"/>
+        </svg>
+        <div class="banner-text">
+          <p class="banner-title">⚠️ ConfPass Güvenlik Uyarısı</p>
+          <p class="banner-subtitle">${result.isPhishing ? 'Bu site bir phishing (oltalama) sitesi olabilir!' : 'Bu site şüpheli görünüyor. Kişisel bilgilerinizi girmeden önce dikkatli olun.'}</p>
+        </div>
+        <button class="banner-close" onclick="this.parentElement.parentElement.remove()">Anladım</button>
+      </div>
+    `;
+    document.body.prepend(banner);
+  }
 
   // ========== Notification Helper ==========
   function showNotification(message) {
@@ -2233,7 +2305,7 @@
       width: 100%;
       height: 100%;
       background: rgba(5, 5, 7, 0.85);
-      backdrop-filter: blur(12px);
+      backdrop-filter: blur(8px);
       z-index: 2147483647;
       display: flex;
       align-items: center;

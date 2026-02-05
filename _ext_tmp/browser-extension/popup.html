@@ -1014,6 +1014,62 @@
       gap: 8px;
     }
 
+    /* ========== Phishing Warning ========== */
+    .phishing-warning {
+      display: none;
+      padding: 12px 16px;
+      background: linear-gradient(135deg, rgba(239, 68, 68, 0.15) 0%, rgba(239, 68, 68, 0.05) 100%);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      border-radius: var(--radius-md);
+      margin-bottom: 16px;
+      animation: pulseWarning 2s ease-in-out infinite;
+    }
+
+    .phishing-warning.show {
+      display: block;
+    }
+
+    @keyframes pulseWarning {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.4); }
+      50% { box-shadow: 0 0 20px 0 rgba(239, 68, 68, 0.2); }
+    }
+
+    .phishing-warning-header {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 8px;
+    }
+
+    .phishing-warning-icon {
+      width: 24px;
+      height: 24px;
+      color: var(--danger);
+    }
+
+    .phishing-warning-title {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--danger);
+    }
+
+    .phishing-warning-text {
+      font-size: 11px;
+      color: var(--text-secondary);
+      line-height: 1.5;
+    }
+
+    .phishing-warning-reasons {
+      margin-top: 8px;
+      padding-left: 16px;
+    }
+
+    .phishing-warning-reasons li {
+      font-size: 10px;
+      color: var(--text-tertiary);
+      margin-bottom: 4px;
+    }
+
     /* ========== Security Activity Log ========== */
     .activity-section {
       margin-top: 12px;
@@ -1169,6 +1225,20 @@
     </div>
 
     <div id="mainContent" style="display: none;">
+      <!-- Phishing Warning -->
+      <div id="phishingWarning" class="phishing-warning">
+        <div class="phishing-warning-header">
+          <svg class="phishing-warning-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+            <line x1="12" y1="9" x2="12" y2="13"/>
+            <line x1="12" y1="17" x2="12.01" y2="17"/>
+          </svg>
+          <span class="phishing-warning-title">Güvenlik Uyarısı</span>
+        </div>
+        <div class="phishing-warning-text">Bu site şüpheli görünüyor. Dikkatli olun!</div>
+        <ul id="phishingReasons" class="phishing-warning-reasons"></ul>
+      </div>
+
       <div class="site-info">
         <div class="site-info-label">Mevcut Site</div>
         <div id="currentSite" class="site-info-value">-</div>

@@ -18,6 +18,8 @@ document.addEventListener('DOMContentLoaded', () => {
   const toastProgress = document.getElementById('toastProgress');
 
   // New elements
+  const phishingWarning = document.getElementById('phishingWarning');
+  const phishingReasons = document.getElementById('phishingReasons');
   const totpSection = document.getElementById('totpSection');
   const totpCode = document.getElementById('totpCode');
   const totpCopyBtn = document.getElementById('totpCopyBtn');
@@ -57,6 +59,8 @@ document.addEventListener('DOMContentLoaded', () => {
         currentDomain = url.hostname;
         currentSiteEl.textContent = currentDomain;
 
+        // Check for phishing
+        checkPhishing(tabs[0].url);
       } catch (e) {
         currentDomain = '';
         currentSiteEl.textContent = 'Geçersiz URL';
@@ -65,6 +69,20 @@ document.addEventListener('DOMContentLoaded', () => {
     checkConnection();
     loadActivityLog();
   });
+
+  // ========== Phishing Detection ==========
+  function checkPhishing(url) {
+    chrome.runtime.sendMessage({ type: 'check_phishing', url }, (response) => {
+      if (chrome.runtime.lastError) return;
+
+      if (response && (response.isPhishing || response.isSuspicious)) {
+        phishingWarning.classList.add('show');
+        phishingReasons.innerHTML = response.reasons
+          .map(r => `<li>${escapeHtml(r)}</li>`)
+          .join('');
+      }
+    });
+  }
 
   // ========== TOTP Functionality ==========
   function loadTOTP() {

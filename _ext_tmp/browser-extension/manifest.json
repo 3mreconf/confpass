@@ -29,8 +29,7 @@
       "js": [
         "content.js"
       ],
-      "run_at": "document_end",
-      "all_frames": true
+      "run_at": "document_start"
     },
     {
       "matches": [
@@ -41,8 +40,7 @@
         "webauthn-injector.js"
       ],
       "run_at": "document_start",
-      "world": "MAIN",
-      "all_frames": true
+      "world": "MAIN"
     }
   ],
   "action": {

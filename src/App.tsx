@@ -226,6 +226,11 @@ function App() {
     }
   }, [vaultLocked, checkAvailability]);
 
+  // Clear search query when page or category changes
+  useEffect(() => {
+    setSearchQuery('');
+  }, [currentPage, selectedCategory]);
+
   useEffect(() => {
     const setupPasskeyListeners = async () => {
       console.log('[Passkey Listener] Setting up passkey listeners...');
