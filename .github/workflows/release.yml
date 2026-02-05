@@ -73,7 +73,7 @@ jobs:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
           project-slug: confpass
-          signing-policy-slug: release-signing
+          signing-policy-slug: confpass
           artifact-configuration-slug: msi
           github-artifact-id: ${{ needs.build-tauri.outputs.msi-artifact-id }}
           wait-for-completion: true
@@ -98,7 +98,7 @@ jobs:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
           project-slug: confpass
-          signing-policy-slug: release-signing
+          signing-policy-slug: confpass
           artifact-configuration-slug: exe
           github-artifact-id: ${{ needs.build-tauri.outputs.nsis-artifact-id }}
           wait-for-completion: true
