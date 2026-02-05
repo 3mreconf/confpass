@@ -8,12 +8,15 @@ on:
 permissions:
   contents: write
   id-token: write
+  actions: read
 
 jobs:
   build-tauri:
     runs-on: windows-latest
     outputs:
       version: ${{ steps.get_version.outputs.version }}
+      msi-artifact-id: ${{ steps.upload-msi.outputs.artifact-id }}
+      nsis-artifact-id: ${{ steps.upload-nsis.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -44,73 +47,85 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ""
 
       - name: Upload unsigned MSI
+        id: upload-msi
         uses: actions/upload-artifact@v4
         with:
           name: unsigned-msi
           path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/msi/*.msi
 
       - name: Upload unsigned NSIS
+        id: upload-nsis
         uses: actions/upload-artifact@v4
         with:
           name: unsigned-nsis
           path: src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe
 
-  sign-artifacts:
+  sign-msi:
     needs: build-tauri
     runs-on: ubuntu-latest
+    outputs:
+      signed-artifact-id: ${{ steps.sign.outputs.signed-artifact-id }}
     steps:
-      - name: Download unsigned MSI
-        uses: actions/download-artifact@v4
-        with:
-          name: unsigned-msi
-          path: ./unsigned
-
-      - name: Download unsigned NSIS
-        uses: actions/download-artifact@v4
-        with:
-          name: unsigned-nsis
-          path: ./unsigned
-
       - name: Sign MSI with SignPath
+        id: sign
         uses: signpath/github-action-submit-signing-request@v1
         with:
           api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
           organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
           project-slug: confpass
-          signing-policy-slug: confpass
+          signing-policy-slug: release-signing
           artifact-configuration-slug: msi
-          github-artifact-id: unsigned-msi
+          github-artifact-id: ${{ needs.build-tauri.outputs.msi-artifact-id }}
           wait-for-completion: true
-          output-artifact-directory: ./signed
+          output-artifact-directory: ./signed-msi
 
-      - name: Sign NSIS with SignPath
-        uses: signpath/github-action-submit-signing-request@v1
-        with:
-          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
-          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
-          project-slug: confpass
-          signing-policy-slug: confpass
-          artifact-configuration-slug: exe
-          github-artifact-id: unsigned-nsis
-          wait-for-completion: true
-          output-artifact-directory: ./signed
-
-      - name: Upload signed artifacts
+      - name: Upload signed MSI
         uses: actions/upload-artifact@v4
         with:
-          name: signed-artifacts
-          path: ./signed/*
+          name: signed-msi
+          path: ./signed-msi/*
+
+  sign-nsis:
+    needs: build-tauri
+    runs-on: ubuntu-latest
+    outputs:
+      signed-artifact-id: ${{ steps.sign.outputs.signed-artifact-id }}
+    steps:
+      - name: Sign NSIS with SignPath
+        id: sign
+        uses: signpath/github-action-submit-signing-request@v1
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ secrets.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: confpass
+          signing-policy-slug: release-signing
+          artifact-configuration-slug: exe
+          github-artifact-id: ${{ needs.build-tauri.outputs.nsis-artifact-id }}
+          wait-for-completion: true
+          output-artifact-directory: ./signed-nsis
+
+      - name: Upload signed NSIS
+        uses: actions/upload-artifact@v4
+        with:
+          name: signed-nsis
+          path: ./signed-nsis/*
 
   create-release:
-    needs: [build-tauri, sign-artifacts]
+    needs: [build-tauri, sign-msi, sign-nsis]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Download signed artifacts
+      - name: Download signed MSI
         uses: actions/download-artifact@v4
         with:
-          name: signed-artifacts
+          name: signed-msi
+          path: ./release-assets
+
+      - name: Download signed NSIS
+        uses: actions/download-artifact@v4
+        with:
+          name: signed-nsis
           path: ./release-assets
 
       - name: Create Release
